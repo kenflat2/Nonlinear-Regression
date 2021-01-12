@@ -6,9 +6,9 @@ from numpy import genfromtxt
 from sklearn.linear_model import LinearRegression
 from scipy.integrate import odeint
 from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.widgets import Slider, Button, RadioButtons
 from functools import reduce
 
+theta = 6
 dim = 3
 
 rho = 28.0
@@ -31,8 +31,8 @@ def nearestNeighborsPrediction(state):
     return sum(pred1neigh) / numNeighbors
 
 # make a 1 time step prediction based on a given state(nD vector)
-def SMapPrediction(state,states, theta):
-    W = getWeightedValues(state, states, theta)
+def SMapPrediction(state,states):
+    W = getWeightedValues(state, states)
     W = np.delete(W, (-1), axis = 0)
     X = np.delete(states, (-1), axis=0)
     Y = np.delete(states, (0), axis=0)
@@ -40,7 +40,7 @@ def SMapPrediction(state,states, theta):
     # print("State ", state, "H ",H, "Prediction ", state @ H)
     return state @ H
 
-def getWeightedValues(state, states, theta):
+def getWeightedValues(state, states):
     d = calculateD(state, states)
     # calculate weights for each element
     weights = []
@@ -62,37 +62,13 @@ def calculateD(state, states):
     d = sum(norms) / len(norms)
     return d
 
-def getMegaPrediction(num, trainStates, theta):
-    megaPrediction = []
-    prevState = trainStates[-1]
-    for i in range(num):
-        prevState = SMapPrediction(prevState, trainStates, theta)
-        megaPrediction.append(prevState)
-
-    return megaPrediction
-    x = list(map(lambda elem: elem[0], megaPrediction))
-    y = list(map(lambda elem: elem[1], megaPrediction))
-    z = list(map(lambda elem: elem[2], megaPrediction))
 # main logic
-start = 0
-end = 50
-step = .05
 testvtrainratio = .9
-cutoff = int(end * (1/step) * testvtrainratio)
-
-state0 = np.array([1.0, 2.0, 4.0])
-t = np.arange(start, end, step)
-
-# generate input data
-states = odeint(f, state0, t)
-trainStates = states[:cutoff]
-testStates = states[cutoff:]
-# print(trainStates)
 
 # Read input data from files
-# file = "lynxhare - cleaned.csv"
-# data = pd.read_csv(file,encoding="utf-8",na_filter=False)
-# print(data)
+file = "paramecium_didinium - cleaned.csv"
+data = pd.read_csv(file,encoding="utf-8",na_filter=False)
+print(data)
 
 """
 x = list(map(lambda elem: elem[0], states))
@@ -101,30 +77,43 @@ z = list(map(lambda elem: elem[2], states))
 """
 
 # states contains a numpy array of lorenz equations time series data
-i1 = np.array([4,7,2])
-pred1 = nearestNeighborsPrediction(i1)
+states = data.to_numpy()
+print(states)
+i1 = np.array([3000,2000])
+pred1 = SMapPrediction(i1,states)
 print(pred1)
 
-pred2 = SMapPrediction(i1,trainStates, 4)
-print("SMap Prediction = ", pred2)
-
-megaPrediction = getMegaPrediction(30, trainStates, 0)
+megaPrediction = []
+numIterations = 30
+prevState = states[-1]
+for i in range(20):
+    prevState = SMapPrediction(prevState,states)
+    megaPrediction.append(prevState)
+"""
 stateDistance = list(map(lambda pred, actual: la.norm(pred-actual),megaPrediction,testStates))
-# print(stateDistance)
-
+print(stateDistance)
+"""
 x = list(map(lambda elem: elem[0], megaPrediction))
 y = list(map(lambda elem: elem[1], megaPrediction))
-z = list(map(lambda elem: elem[2], megaPrediction))
+# z = list(map(lambda elem: elem[2], megaPrediction))
 
 fig = plt.figure(1)
-"""
 ax = fig.add_subplot(111, projection='3d')
-ax.scatter(x,y,z,c='r',marker='o')
-"""
+ax.scatter(x,y,c='r',marker='o')
+
 # input dynamics
-ax = fig.gca(projection="3d")
-ax.plot(states[:, 0], states[:, 1], states[:, 2])
-fig2 = plt.figure(2)
+plt.plot(data["paramecium"],data["didinium"])
+
+# Single Step Prediction Accuracy
+errors = []
+for i in range(len(states)-1):
+    prediction = SMapPrediction(states[i], states)
+    errors.append(la.norm(states[i+1] - prediction))
+
+errorfig = plt.figure(2)
+errorAx = errorfig.add_subplot()
+errorAx.hist(errors, bins = 10)
+"""
 # prediction iterated over time
 ax1 = fig2.gca(projection="3d")
 ax1.plot(x, y, z, color='tab:red')
@@ -135,33 +124,9 @@ ax1.set_title("Predicted(red) vs Acutal(blue)")
 fig3 = plt.figure(3)
 ax2 = fig3.add_subplot()
 ax2.plot(range(len(stateDistance)), stateDistance)
-
-# user interaction stuff
-fig4 = plt.figure(4)
-thetaAx = plt.axes()
-thetaChooser = Slider(thetaAx,"Theta", 0, 15, valinit=0, valstep=1)
-
-def update(val):
-    theta = thetaChooser.val
-        
-    megaPrediction = getMegaPrediction(50, trainStates, theta)
-    stateDistance = list(map(lambda pred, actual: la.norm(pred-actual),megaPrediction,testStates))
-    # print(stateDistance)
-
-    x = list(map(lambda elem: elem[0], megaPrediction))
-    y = list(map(lambda elem: elem[1], megaPrediction))
-    z = list(map(lambda elem: elem[2], megaPrediction))
-    
-    ax1.clear()
-    ax1.plot(x, y, z, color='tab:red')
-    ax1.plot(testStates[:,0],testStates[:,1],testStates[:,2],color='tab:blue')
-    fig2.canvas.draw()
-    fig2.canvas.flush_events()
-
-thetaChooser.on_changed(update)
-
-ax.set_xlabel("X label")
-ax.set_ylabel("Y label")
-ax.set_zlabel("Z label")
+"""
+#ax.set_xlabel("X label")
+#ax.set_ylabel("Y label")
+#ax.set_zlabel("Z label")
 
 plt.show()
