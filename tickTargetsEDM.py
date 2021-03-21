@@ -66,7 +66,7 @@ def calculateD(state, states):
 testvtrainratio = .9
 
 # Read input data from files
-file = "paramecium_didinium - cleaned.csv"
+file = "ticks-targets - Cleaned.csv"
 data = pd.read_csv(file,encoding="utf-8",na_filter=False)
 print(data)
 
@@ -77,26 +77,34 @@ z = list(map(lambda elem: elem[2], states))
 """
 
 # states contains a numpy array of lorenz equations time series data
-states = data.to_numpy()
+states = data.to_numpy(dtype=np.float32)
 print(states)
 
 # data prep
-tao = 7
-colNum = 1
-states[:,0] /= np.std(states, axis=0, dtype=np.float64)[0]
-states[:,0] -= np.mean(states, axis=0, dtype=np.float64)[0]
-states[:,1] /= np.std(states, axis=0, dtype=np.float64)[1]
-states[:,1] -= np.mean(states, axis=0, dtype=np.float64)[1]
+
+states[:,0] %= 100
+newCol = np.cos(states[:,0] * 2.0 * np.pi / 52.0)
+states[:,0] = np.sin(states[:,0] * 2.0 * np.pi / 52.0)
+print(states)
+
+tao = 13
+colNum = 0
+print("STD ", states[:3,0]," ", np.mean(states, axis=0, dtype=np.float64)[0])
+# states[:,0] = states[:,0] / np.std(states, axis=0, dtype=np.float64)[0]
+# states[:,0] = states[:,0] - np.mean(states, axis=0, dtype=np.float64)[0]
+states[:,1] = states[:,1] / np.std(states, axis=0, dtype=np.float64)[1]
+states[:,1] = states[:,1] - np.mean(states, axis=0, dtype=np.float64)[1]
 
 print("States ",states)
-newCol = states[:-tao,colNum]
+# newCol = states[:-tao,colNum]
 print("NewCol ",newCol," ", newCol.size)
-states = states[tao:,]
+# states = states[tao:,]
 # np.resize(states, (2, states.shape[0] - tao))
 print("States ",states)
 states = np.column_stack((states, newCol))
 # np.append(states, newCol, axis=0)
 print(states)
+
 
 i1 = np.array([3000,2000])
 
@@ -113,7 +121,7 @@ print(stateDistance)
 """
 x = list(map(lambda elem: elem[0], megaPrediction))
 y = list(map(lambda elem: elem[1], megaPrediction))
-z = list(map(lambda elem: elem[2], megaPrediction))
+# z = list(map(lambda elem: elem[2], megaPrediction))
 
 fig = plt.figure(1)
 ax = fig.add_subplot(111, projection='3d')
