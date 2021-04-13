@@ -1,10 +1,10 @@
-import KenGP as gp
 import numpy as np
 import pandas as pd
 import numpy.linalg as la
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, RadioButtons
+
 
 # Rossler System
 def Rossler(xi, t):
@@ -45,15 +45,15 @@ def Lorenz96(x, t):
     return d    
 
 begin = 0
-end = 40
-step = 0.25
+end = 10
+step = 0.05
 tlen = int((end-begin)/step)
 trainToTest = 0.8 # between 0 and 1
 t = np.arange(begin, end, step)
 
 # MAKE SURE TO UPDATE THE DIMENSION WHEN SWITCHING ATTRACTORS
 dim = 3
-t0 = np.zeros(dim) * 2
+t0 = np.array([1,1,7])# np.zeros(dim) * 2
 t0[0] += 0.1
 
 # STATIONARY SIMULATION VERSION: UPDATE ATTRACTOR YOU WANT HERE
@@ -72,11 +72,11 @@ print(states)
 
 
 # NON STATIONARY VERSION
-"""
+
 rho = 28.0
 sigma = 10.0
 beta = 8.0 / 3.0
-
+"""
 deltaP = 0.01
 states = np.zeros((tlen,3))
 states[0] = t0
@@ -101,63 +101,7 @@ if dim == 2:
     ax2.plot(X[:,0],X[:,1])
 else:
     ax2.plot(X[:,0],X[:,1],X[:,2])
-    
-print(states)
-# Xt = np.column_stack((X[testTrainSplit:,], X[testTrainSplit-1:-1,1]))
-Xt = X[testTrainSplit:,]
-Yt = Y[testTrainSplit:,]
-X = X[:testTrainSplit,]
-Y = Y[:testTrainSplit,]
 
-print(Xt)
-
-gp.setCovar("sqrexpf")
-gp.setPrior(1,"half-normal")
-gp.setPrior(2,"half-normal")
-gp.setData(X,Y)
-gp.setTimeDelayInterval(1)
-# gp.setDelayEmbedding([0,1,0])
-
-# optimize them parameters
-gp.hyperParamOptimize()
-
-diffTable = []
-predictions = np.zeros((len(Xt),dim))
-for i in range(len(Xt)):
-    prediction = gp.predict(Xt[i])[0]
-    predictions[i] = prediction # list of one step prediction values for graphing
-    
-    diff = la.norm(Yt[i] - prediction) # norm error for 1 step
-    diffTable.append(diff)
-print("Predictions ", predictions)
-print("DiffTable ", diffTable)
-
-diffTable = np.array(diffTable)
-
-# feed forward prediction
-n = 200 # num steps
-feedForwardPrediction = np.zeros(((n+1,dim)))
-feedForwardPrediction[0] = X[0]
-for i in range(n):
-    feedForwardPrediction[i+1] = gp.predict(feedForwardPrediction[i])[0]
-
-print(predictions)
-
-fig0 = plt.figure(0)
-if dim == 2:
-    ax0 = plt.subplot()
-    ax0.plot(Yt[:,0],Yt[:,1],"b") # states
-    ax0.plot(predictions[:,0],predictions[:,1],'--r') # map of 1 step ahead predictions
-else:
-    ax0 = fig0.gca(projection="3d")
-    ax0.plot(Yt[:,0],Yt[:,1],Yt[:,2],"b") # states
-    ax0.plot(predictions[:,0],predictions[:,1],predictions[:,2],'--r') # map of 1 step ahead predictions
-    # ax0.plot(feedForwardPrediction[:,0],feedForwardPrediction[:,1],feedForwardPrediction[:,2],'--g') # map of 50 step ahead prediction
-
-fig1 = plt.figure(1)
-plt.hist(diffTable)
-
-"""
 # user interaction stuff
 fig3 = plt.figure(3)
 sliderAx = plt.axes()
@@ -219,5 +163,5 @@ print(st)
 x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
 u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
 ax2.quiver(x,y,z,u,v,w,length=st[0],normalize=True, color = "r", alpha=0.25)
-"""
+
 plt.show()

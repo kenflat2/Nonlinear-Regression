@@ -44,8 +44,8 @@ covarDict = {
     "sqrexp" : lambda x1, x2, t: hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
     "sqrexpf" : lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),        # hp[3] = delta(forgetting rate)
     
-    # 1 : tau, 2 : Vz*phi_a, 3 : phi_x
-    "sqrexpo" : lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),  
+    # 1 : tau, 2 : phi_x, 3 : Vz*phi_a
+    "sqrexpo" : lambda x1, x2, t: hp[1] * ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),  
 }
 covarDerivDict = {
     "sqrexp" :  (   lambda x1, x2, t: np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
@@ -53,11 +53,11 @@ covarDerivDict = {
                 ),
     "sqrexpf" : (   lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
                     lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * -hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2),
-                    lambda x1, x2, t: -1 * (hp[3]/2) * (((1 + hp[3]*t) ** (-3/2))) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
+                    lambda x1, x2, t: (hp[3]/2) * (((1 + hp[3]*t) ** (-3/2))) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
                 ),
     "sqrexpo" : (   lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
-                    lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-3/2)) * t * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
-                    lambda x1, x2, t: -1 * np.dot(x1-x2,x1-x2) * ((1 + 2*hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+                    lambda x1, x2, t: -1 * np.dot(x1-x2,x1-x2) * hp[1] * ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+                    lambda x1, x2, t: -1 * ((1 + 2*hp[3]*t) ** (-3/2)) * t * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
                 ),
 }
 
