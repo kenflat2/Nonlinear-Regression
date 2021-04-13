@@ -2,12 +2,7 @@ import numpy as np
 import numpy.linalg as la
 import matplotlib.pyplot as plt
 
-# Global Variables
-tau = 0.5
-phi = 0.5
-sigma = 0.001
-delta = 0.06
-
+# String that defines which covar func to use
 covarFuncStr = "sqrexp"
 meanFuncStr = "zero"
 
@@ -22,47 +17,116 @@ Kflat = np.array([])
 Kinvflat = np.array([])
 
 dim = 0
+embDim = 0
+embInterval = 1
 
 Xlen = 0
 Ylen = 0
 
-covarDict = {
-    "exp" : lambda x1,x2: tau * np.exp( -phi * (np.dot(x1-x2,x1-x2) ** (1/2))),
-    "sqrexp" : lambda x1,x2: tau * np.exp( -phi * np.dot(x1-x2,x1-x2)),
-    "sqrexpf" : lambda x1, x2, t: ((1 + delta*t) ** (-1/2)) * tau * np.exp( -phi * np.dot(x1-x2,x1-x2)),
-    "sqrexpo" : lambda x1, x2, t: ((1 + 2*phi*sigma*t) ** (-1/2)) * tau * np.exp( -phi * np.dot(x1-x2,x1-x2)),
-}
-covarDerivDict = {
-    "sqrexp" : ( lambda x1, x2: np.exp( -phi * np.dot(x1-x2,x1-x2)),
-                 lambda x1, x2: -tau * np.exp( -phi * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2)),
-    "sqrexpf" : ( lambda x1, x2: np.exp( -phi * np.dot(x1-x2,x1-x2)),
-                 lambda x1, x2: -tau * np.exp( -phi * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2)),
-    "sqrexpo" : ( lambda x1, x2: np.exp( -phi * np.dot(x1-x2,x1-x2)),
-                 lambda x1, x2: -tau * np.exp( -phi * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2)),
-}
-meanDict = {
-    "zero" : lambda x: np.zeros(dim)
-}
-numHyperParam = {
+r = 1
+
+# number of optimization steps
+optSteps = 20
+
+numHP = {
     "exp" : 2,
     "sqrexp" : 2,
     "sqrexpf" : 3,
-    "sqrexpo" : 2,
+    "sqrexpo" : 3,
 }
-        
+
+# HyperParameters
+hp = np.ones(1 + numHP[covarFuncStr]) * 0.5 # array of hyperparameters for a given covar function
+
+# Covar Func and derivative dictionaries - use hp array for each hyperparameter. Remember that hp[0] is reserved for prior variance, so start using hp[1] and up
+covarDict = {
+    "exp" : lambda x1, x2, t: hp[1] * np.exp( -hp[2] * (np.dot(x1-x2,x1-x2) ** (1/2))),                                 # hp[1] = tau, hp[2] = phi
+    "sqrexp" : lambda x1, x2, t: hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+    "sqrexpf" : lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),        # hp[3] = delta(forgetting rate)
+    
+    # 1 : tau, 2 : Vz*phi_a, 3 : phi_x
+    "sqrexpo" : lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),  
+}
+covarDerivDict = {
+    "sqrexp" :  (   lambda x1, x2, t: np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+                    lambda x1, x2, t: -hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2)
+                ),
+    "sqrexpf" : (   lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+                    lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * -hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2),
+                    lambda x1, x2, t: -1 * (hp[3]/2) * (((1 + hp[3]*t) ** (-3/2))) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
+                ),
+    "sqrexpo" : (   lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+                    lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-3/2)) * t * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+                    lambda x1, x2, t: -1 * np.dot(x1-x2,x1-x2) * ((1 + 2*hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
+                ),
+}
+
+meanDict = {
+    "zero" : lambda x: np.zeros(dim)
+}
+
+availablePriorDict = {
+    "none" : lambda x: 0,
+    "half-normal" : lambda x: x * np.pi / np.sqrt(12),
+}
+
+setPriorDict = {
+    0 : "none"
+}
+
+def covar(x1, x2, i1, i2, t):
+    global r, covarDict, covarFuncStr, X
+    cov = covarDict[covarFuncStr](x1, x2, t)
+
+    # Adjust covariance to account for different timescales in time lags ( only works for sqexp at present, please be patient)
+    for i in range(1,embDim):
+        print("Time lag calc for some reason ", embDim)
+        if i1 - i >= 0 and i2 - i >= 0:
+            xdif = X[i1-i] - X[i2-i]
+            lenscalei = numHP[covarFuncStr]+i-1 # index of current lengthscale param
+            cov *= np.exp(-hp[lenscalei] * np.dot(xdif,xdif) / r)
+
+    return cov
+
+# Returns partial derivative of covar over a given hyperparameter
+def dCovardHp(i1, i2, h):
+    if h < numHP[covarFuncStr] + 1:
+        return covarDerivDict[covarFuncStr][h-1](X[i1],X[i2],abs(i1-i2))
+    elif h < len(hp):
+        # print("Should not print")
+        return covar(X[i1], X[i2], i1, i2, abs(i1-i2)) * -hp[1] * la.norm(X[i1] - X[i2])
+    print("RHU RHO RAGGY, not a valid hyperparameter! h = ", h)
+    return 0
+
 def helpCovar():
     print("exp - exponential, sqrexp - squared exponential")
 
 def setCovar(covstr):
+    global setPriorDict
     if covstr in covarDict:
-        global covarFuncStr
+        global covarFuncStr, hp
         covarFuncStr = covstr
+        hp = np.ones(1 + numHP[covarFuncStr]) * 0.5
+        
+        initPriors()
         print("Covariance function set to ", covstr)
     else:
-        print("Unable to set covariance function")
+        print("Unable to set covariance function, covar function remains ", covarFuncStr)
+
+def initPriors():
+    global setPriorDict, embDim
+    
+    for i in range(1,numHP[covarFuncStr]+1+embDim):
+        if i not in setPriorDict:
+            setPriorDict[i] = "none"
+    print("Prior dict ", setPriorDict)
 
 def setData(xd, yd):
-    global X, Y, Xlen, Ylen, Xflat,Yflat, dim
+    global X, Y, Xlen, Ylen, Xflat,Yflat, dim, r, embDim
+
+    # all embedding nonsense is cleared when new data is applied
+    embDim = 0
+    hp = np.ones(1 + numHP[covarFuncStr]) * 0.5 # array of hyperparameters for a given covar function
     
     X = xd
     Y = yd
@@ -73,20 +137,66 @@ def setData(xd, yd):
 
     Xflat = X.flatten(order="F")
     Yflat = Y.flatten(order="F")
+
+    # Since data is normalized, the expected max distance should be around 5(2.5 st in any direction) times length of diagonal in unit hypercube
+    r = 5 * np.sqrt(X.shape[1])
+    print("r = ", r)
     
     createCovarMatrix()
     print("Data input success")
 
+def setPrior(varNum, str):
+    global setPriorDict    
+    setPriorDict[varNum] = str
+
+def setDelayEmbedding(assignment):
+    global embDim, hp, X, embInterval, Xlen, Ylen, Y
+
+    tmplen = X.shape[1]
+
+    tmp = np.zeros([sum(x) for x in zip(X.shape,(0,sum(assignment)))])
+    tmp[:,:X.shape[1]] = X
+    X = tmp
+
+    lag = 1
+    newColInd = 0
+    if len(assignment) != tmplen:
+        print("Assigment list doesn't match the number of variables in data array! ",assignment)
+        return
+    else:
+        # code that creates the lags
+        for i in range(len(assignment)):
+            for _ in range(assignment[i]):
+                newCol = X[:-embInterval*lag,i]
+                X = X[embInterval*lag:]
+                X[:, tmplen + newColInd] = newCol
+                lag += 1
+                newColInd += 1
+    
+    embDim = len(assignment)
+    hp = np.append(hp, np.ones(embDim) * 0.5)
+
+    # update size of X and of Y
+    Xlen = X.shape[0]
+    Ylen = X.shape[0]
+    Y = Y[-Xlen:]
+
+    # call other methods to get set up
+    createCovarMatrix()
+    initPriors()
+
+def setTimeDelayInterval(i):
+    global embInterval
+    
+    embInterval = i
+
 def createCovarMatrix():
-    global K, Kinv, Kflat, Kinvflat
+    global K, Kinv, Kflat, Kinvflat, Xlen
     K = np.zeros((Xlen,Xlen))
     for i in range(Xlen):
         for j in range(Xlen):
-            if covarFuncStr in ("sqrexpf","sqrexpo"):
-                K[i][j] = covarDict[covarFuncStr](X[i],X[j],abs(i-j))
-            else:
-                K[i][j] = covarDict[covarFuncStr](X[i],X[j])
-    K = K + (sigma ** 2) * np.identity(Xlen) # add sigma to array, don't see any case where we need the default K
+            K[i][j] = covar(X[i], X[j], i, j, abs(i-j))
+    K = K + (hp[0] ** 2) * np.identity(Xlen) # add sigma to array, don't see any case where we need the default K
     # print("K = ", K, " tau ", tau, " phi ", phi)
     Kinv = la.inv(K) # invert K immediately, get it outta the way
     # make flattened versions
@@ -112,13 +222,13 @@ def createCovarMatrix():
     plt.show()
 
 def predict(xin):
-    #print(X)
+    global X
+
+    ii = X.shape[0]
+    
     C = np.zeros(Xlen)
     for i in range(Xlen):
-        if covarFuncStr in ("sqrexpf","sqrexpo"):
-            C[i] = covarDict[covarFuncStr](xin, X[i],0)
-        else:
-            C[i] = covarDict[covarFuncStr](xin, X[i])
+        C[i] = covar(X[i],xin, i, ii,0)
 
     M = np.zeros(Y.shape)
     for i in range(Ylen):
@@ -126,15 +236,12 @@ def predict(xin):
 
     # print(C.shape," ", CM.shape," ", Y.shape)
     pred = meanDict[meanFuncStr](xin) + C @ Kinv @ (Y - M)
-    if covarFuncStr in ("sqrexpf","sqrexpo"):
-        predVar = covarDict[covarFuncStr](xin,xin,0) - C @ Kinv @ np.transpose(C)
-    else:
-        predVar = covarDict[covarFuncStr](xin,xin) - C @ Kinv @ np.transpose(C)
-    
+    predVar = covar(xin,xin,ii,ii, 0) - C @ Kinv @ np.transpose(C)
+
     return (pred, predVar)
 
-def hyperParamOptimize():
-    global tau, phi, sigma
+def hyperParamOptimize(steps=20):
+    global hp, optSteps
     
     # time for RPROP
     """
@@ -176,7 +283,7 @@ def hyperParamOptimize():
     plt.show()
     """
     
-    maxCount = 20
+    maxCount = steps
     count = 0
 
     rhoplus = 1.2 # if the sign of the gradient doesn't change, must be > 1
@@ -191,14 +298,14 @@ def hyperParamOptimize():
     y = np.zeros((maxCount,1))
 
     grads = np.zeros((2,maxCount))
-    print(grads.shape)
+    # print(grads.shape)
 
-    deltaPrev = np.ones((1+numHyperParam[covarFuncStr])) * 0.5 # low initial delta value, this modifies vars directly
+    deltaPrev = np.ones(len(hp)) * 0.5 # low initial delta value, this modifies vars directly
     gradPrev = deltaPrev
-    while la.norm(gradPrev) > 0.00001  and count < maxCount:
+    while la.norm(gradPrev) > 0.001  and count < maxCount:
         grad = hyperParamGradient()
-        grad = grad / la.norm(grad) # NORMALIZE, because rprop ignores magnitude
-        print("Gradient: ",grad)
+        grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
+        # print("Gradient: ",grad)
         print("Likelihood: ", hyperParamLikelihood())
 
         s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
@@ -212,19 +319,21 @@ def hyperParamOptimize():
         gradPrev = grad
         count += 1
 
-        sigma = min(max(sigma+dweights[0],hypermin),hypermax)
-        tau = min(max(tau+dweights[1],hypermin),hypermax)
-        phi = min(max(phi+dweights[2],hypermin),hypermax)
+        # floor and ceiling on the hyperparameters
+        hp = np.clip(hp+dweights, hypermin, hypermax)
 
-        x[i] = sigma
-        y[i] = tau
+        if covarFuncStr in list("sqrexpf"):
+            hp[3] = min(hp[3],1)
+
+        x[i] = hp[0]
+        y[i] = hp[1]
         grads[0][i] = grad[0]
         grads[1][i] = grad[1]
         i += 1
 
         createCovarMatrix()
 
-        print("Tau ", tau, " Phi ", phi, " Sigma ", sigma, " count ", count)
+        print("Hp: ", hp, " # ", count)
     fig3, ax3 = plt.subplots()
     ax3.quiver(x,y,grads[0],grads[1])#grads[:,0],grad[:,1])
     ax3.set_xlabel("Sigma")
@@ -260,7 +369,7 @@ def hyperParamLikelihood():
     v = np.pi / np.sqrt(12)
     
     print(la.slogdet(K), Y[:,yind].T @ Kinv @ Y[:,yind])
-    priorPenalty = np.log(2) - phi**2 / (2*v) + np.log(np.sqrt(2*np.pi*v))
+    priorPenalty = np.log(2) - hp[2]**2 / (2*v) + np.log(np.sqrt(2*np.pi*v))
     return -0.5 * (la.slogdet(K)[1] + Y[:,yind].T @ Kinv @ Y[:,yind]) + priorPenalty
 
     # return -0.5 *( np.transpose(Y[:,yind]) @ Kinv @ Y[:,yind] + np.log(la.norm(K)) + X.shape[0] * np.log(2*np.pi)) - np.log(2 * np.exp(-phi**2/(2*v))/np.sqrt(2*np.pi*v))
@@ -273,28 +382,28 @@ def hyperParamLikelihood():
     # return -0.5 * (np.log(la.norm(K)) + np.transpose(Y) @ Kinv @ Y )
 
 def hyperParamGradient():
+    global hp
     yind = 1
     # calculate gradient of K for hyperparams, requires custom partial derivative calculations
-    grad = np.zeros(1 + numHyperParam[covarFuncStr])
+    grad = np.zeros(len(hp))
     
     # first find gradient for variance, since that is independent of the covariance function
-    dKdSig = np.identity(Xlen) * sigma
+    dKdSig = np.identity(Xlen) * hp[0]
+    # print(dKdSig.shape, Y[:,yind].T.shape, Kinv.shape, K.shape)
     dSigma = 0.5 * ( Y[:,yind].T @ Kinv @ dKdSig @ Kinv @ Y[:,yind] - np.trace(Kinv @ dKdSig))
     grad[0] = dSigma
 
     # Then find gradient for all other values
-    dKdTau = np.zeros((X.shape[0],X.shape[0]))
-    dKdPhi = np.zeros((X.shape[0],X.shape[0]))
-    for i in range(X.shape[0]):
-        for j in range(X.shape[0]):
-            dKdTau[i][j] = covarDerivDict[covarFuncStr][0](X[i],X[j])
-            dKdPhi[i][j] = covarDerivDict[covarFuncStr][1](X[i],X[j])
+    dKdHP = np.zeros((X.shape[0],X.shape[0]))
+    for h in range(1,len(hp)):
+        for i in range(X.shape[0]):
+            for j in range(X.shape[0]):
+                dKdHP[i][j] = dCovardHp(i,j,h) # covarDerivDict[covarFuncStr][h](X[i],X[j],abs(i-j))
 
-    dTau = 0.5 * ( Y[:,yind].T @ Kinv @ dKdTau @ Kinv @ Y[:,yind] - np.trace(Kinv @ dKdTau)) - tau * np.pi / np.sqrt(12)
-    dPhi = 0.5 * ( Y[:,yind].T @ Kinv @ dKdPhi @ Kinv @ Y[:,yind] - np.trace(Kinv @ dKdPhi)) - phi * np.pi / np.sqrt(12)
+        #                                                                                       \/ get appropriate prior function and pass in current hp(we love ugly code)
+        dHP = 0.5 * ( Y[:,yind].T @ Kinv @ dKdHP @ Kinv @ Y[:,yind] - np.trace(Kinv @ dKdHP)) - availablePriorDict[setPriorDict[h]](hp[h])
 
-    grad[1] = dTau
-    grad[2] = dPhi
+        grad[h] = dHP
 
     return grad
     
