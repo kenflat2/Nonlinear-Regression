@@ -10,6 +10,8 @@ X = np.array([])
 Y = np.array([])
 K = np.array([])
 Kinv = np.array([])
+originalX = np.array([])
+originalY = np.array([])
 
 Xflat = np.array([])
 Yflat = np.array([])
@@ -36,7 +38,7 @@ numHP = {
 }
 
 # HyperParameters
-hp = np.ones(1 + numHP[covarFuncStr]) * 0.5 # array of hyperparameters for a given covar function
+hp = np.ones(1 + numHP[covarFuncStr]) * 0.1 # array of hyperparameters for a given covar function
 
 # Covar Func and derivative dictionaries - use hp array for each hyperparameter. Remember that hp[0] is reserved for prior variance, so start using hp[1] and up
 covarDict = {
@@ -68,6 +70,7 @@ meanDict = {
 availablePriorDict = {
     "none" : lambda x: 0,
     "half-normal" : lambda x: x * np.pi / np.sqrt(12),
+    "ARD" : lambda x: -2 * np.exp(-(x**2)/np.pi)/np.pi
 }
 
 setPriorDict = {
@@ -80,7 +83,6 @@ def covar(x1, x2, i1, i2, t):
 
     # Adjust covariance to account for different timescales in time lags ( only works for sqexp at present, please be patient)
     for i in range(1,embDim):
-        print("Time lag calc for some reason ", embDim)
         if i1 - i >= 0 and i2 - i >= 0:
             xdif = X[i1-i] - X[i2-i]
             lenscalei = numHP[covarFuncStr]+i-1 # index of current lengthscale param
@@ -90,11 +92,18 @@ def covar(x1, x2, i1, i2, t):
 
 # Returns partial derivative of covar over a given hyperparameter
 def dCovardHp(i1, i2, h):
+    hi = h - numHP[covarFuncStr] + 1
+    
+    global X, r
     if h < numHP[covarFuncStr] + 1:
         return covarDerivDict[covarFuncStr][h-1](X[i1],X[i2],abs(i1-i2))
     elif h < len(hp):
-        # print("Should not print")
-        return covar(X[i1], X[i2], i1, i2, abs(i1-i2)) * -hp[1] * la.norm(X[i1] - X[i2])
+        if 0 <= i1-hi or 0 <= i2-hi:
+            #print("Should not print")
+            return covar(X[i1], X[i2], i1, i2, abs(i1-i2)) * la.norm(X[i1-hi] - X[i2-hi]) / -r
+        else:
+            #print("This would access illegal elements")
+            return 0
     print("RHU RHO RAGGY, not a valid hyperparameter! h = ", h)
     return 0
 
@@ -124,9 +133,12 @@ def initPriors():
 def setData(xd, yd):
     global X, Y, Xlen, Ylen, Xflat,Yflat, dim, r, embDim
 
+    originalX = xd
+    originalY = yd
+
     # all embedding nonsense is cleared when new data is applied
     embDim = 0
-    hp = np.ones(1 + numHP[covarFuncStr]) * 0.5 # array of hyperparameters for a given covar function
+    hp = np.ones(1 + numHP[covarFuncStr]) * 0.1 # array of hyperparameters for a given covar function
     
     X = xd
     Y = yd
@@ -138,19 +150,35 @@ def setData(xd, yd):
     Xflat = X.flatten(order="F")
     Yflat = Y.flatten(order="F")
 
-    # Since data is normalized, the expected max distance should be around 5(2.5 st in any direction) times length of diagonal in unit hypercube
-    r = 5 * np.sqrt(X.shape[1])
-    print("r = ", r)
-    
+    calculateR()
     createCovarMatrix()
     print("Data input success")
+
+def calculateR():
+    global X, r
+    for x1 in X:
+        for x2 in X:
+            dist = la.norm(x1-x2)
+            if dist > r:
+                r = dist
+    print("r = ", r, " versus approx ", 4.5 * np.sqrt(X.shape[1]))
+
+    # APPROXIMATE VERSION
+    # Since data is normalized, the expected max distance should be around 4.5(2.25 st in any direction) times length of diagonal in unit hypercube    
+    # r = 4.5 * np.sqrt(X.shape[1])    
 
 def setPrior(varNum, str):
     global setPriorDict    
     setPriorDict[varNum] = str
+    print("Prior dict ", setPriorDict)
 
 def setDelayEmbedding(assignment):
-    global embDim, hp, X, embInterval, Xlen, Ylen, Y
+    global embDim, hp, X, embInterval, Xlen, Ylen, Y, originalX, originalY
+
+    # delete previous embeddings if they exist
+    if embDim != 0:
+        X = originalX
+        Y = originalY
 
     tmplen = X.shape[1]
 
@@ -173,7 +201,7 @@ def setDelayEmbedding(assignment):
                 lag += 1
                 newColInd += 1
     
-    embDim = len(assignment)
+    embDim = sum(assignment)
     hp = np.append(hp, np.ones(embDim) * 0.5)
 
     # update size of X and of Y
@@ -182,8 +210,11 @@ def setDelayEmbedding(assignment):
     Y = Y[-Xlen:]
 
     # call other methods to get set up
+    calculateR()
     createCovarMatrix()
     initPriors()
+
+    print("New X Dimensions ", X.shape)
 
 def setTimeDelayInterval(i):
     global embInterval
@@ -289,7 +320,7 @@ def hyperParamOptimize(steps=20):
     rhoplus = 1.2 # if the sign of the gradient doesn't change, must be > 1
     rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
 
-    hypermin = 1 * (10**-6)
+    hypermin = 1 * (10**-8)
     hypermax = 10
 
     i = 0
@@ -300,12 +331,12 @@ def hyperParamOptimize(steps=20):
     grads = np.zeros((2,maxCount))
     # print(grads.shape)
 
-    deltaPrev = np.ones(len(hp)) * 0.5 # low initial delta value, this modifies vars directly
+    deltaPrev = np.ones(len(hp)) * 0.1 # low initial delta value, this modifies vars directly
     gradPrev = deltaPrev
     while la.norm(gradPrev) > 0.001  and count < maxCount:
         grad = hyperParamGradient()
         grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
-        # print("Gradient: ",grad)
+        print("Gradient: ",grad)
         print("Likelihood: ", hyperParamLikelihood())
 
         s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
@@ -321,6 +352,7 @@ def hyperParamOptimize(steps=20):
 
         # floor and ceiling on the hyperparameters
         hp = np.clip(hp+dweights, hypermin, hypermax)
+        hp[1+numHP[covarFuncStr]:] = np.clip(hp[1+numHP[covarFuncStr]:], hypermin, 1) # ceil for emb lengthscales 
 
         if covarFuncStr in list("sqrexpf"):
             hp[3] = min(hp[3],1)

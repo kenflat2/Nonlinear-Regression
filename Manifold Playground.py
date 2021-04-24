@@ -20,6 +20,16 @@ def Rossler(xi, t):
 
     return np.array( [dx,dy,dz] )
 
+def RosslerP(xi, t, a, b, c):    
+    (x,y,z) = xi
+
+    dx = -y - z
+    dy = x + a * y
+    dz = b + z * ( x - c )
+
+    return np.array( [dx,dy,dz] )
+
+
 def Lorenz(xi,t):
     rho = 25.0
     sigma = 10.0
@@ -58,7 +68,7 @@ t0[0] += 0.1
 
 # STATIONARY SIMULATION VERSION: UPDATE ATTRACTOR YOU WANT HERE
 #               \/\/\/\/
-states = odeint(Lorenz,t0,t)
+states = odeint(Rossler,t0,t)
 # END STATIONARY SIMULATION
 
 # FROM DATA
@@ -73,16 +83,17 @@ print(states)
 
 # NON STATIONARY VERSION
 
-rho = 28.0
-sigma = 10.0
-beta = 8.0 / 3.0
+p1 = 0.2
+p2 = 0.2
+p3 = 5.7
+
 """
 deltaP = 0.01
 states = np.zeros((tlen,3))
 states[0] = t0
 for i in range(1, tlen ):
-    states[i] = odeint(LorenzP,states[i-1],np.array([0,step]),args=(rho,sigma,beta))[1,:]
-    sigma += deltaP
+    states[i] = odeint(LorenzP,states[i-1],np.array([0,step]),args=(p1,p2,p3))[1,:]
+    p2 += deltaP
 """
 # END NON STATIONARY
 
@@ -105,23 +116,23 @@ else:
 # user interaction stuff
 fig3 = plt.figure(3)
 sliderAx = plt.axes()
-slider = Slider(sliderAx,"Tao", 0, 50, valinit=0, valstep=0.1)
+slider = Slider(sliderAx,"Tao", 0, 8, valinit=0, valstep=0.1)
 
 fig4 = plt.figure(4)
 paramAx = plt.axes()
-paramButtons = RadioButtons(paramAx, ("rho","sigma","beta"), active = 0)
+paramButtons = RadioButtons(paramAx, ("a","b","c"), active = 0)
 
 def update(val):
-    global rho, sigma, beta
-    if (paramButtons.value_selected == "rho"):
-        rho = slider.val
-    elif (paramButtons.value_selected == "sigma"):
-        sigma = slider.val
-    elif (paramButtons.value_selected == "beta"):
-        beta = slider.val
+    global p1, p2, p3
+    if (paramButtons.value_selected == "a"):
+        p1 = slider.val
+    elif (paramButtons.value_selected == "b"):
+        p2 = slider.val
+    elif (paramButtons.value_selected == "c"):
+        p3 = slider.val
 
     # Line Plot Update
-    s = odeint(LorenzP,t0,t, args=(rho,sigma,beta))
+    s = odeint(RosslerP,t0,t, args=(p1,p2,p3))
     ax2.clear()
     ax2.plot(s[:,0], s[:,1], s[:,2])
 
@@ -131,21 +142,21 @@ def update(val):
     st = abs(mi - ma) / 5
     print(st)
 
-    x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
-    u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
-    ax2.quiver(x,y,z,u,v,w,length=5,normalize=True, color = "r", alpha = 0.25)
+    # x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
+    # u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
+    # ax2.quiver(x,y,z,u,v,w,length=5,normalize=True, color = "r", alpha = 0.25)
     
     fig2.canvas.draw()
     fig2.canvas.flush_events()
 
 def update2(val):
-    global rho, sigma, beta
-    if (paramButtons.value_selected == "rho"):
-        slider.set_val(rho)
-    elif (paramButtons.value_selected == "sigma"):
-        slider.set_val(sigma)
-    elif (paramButtons.value_selected == "beta"):
-        slider.set_val(beta)
+    global p1, p2, p3
+    if (paramButtons.value_selected == "a"):
+        slider.set_val(p1)
+    elif (paramButtons.value_selected == "b"):
+        slider.set_val(p2)
+    elif (paramButtons.value_selected == "c"):
+        slider.set_val(p3)
 
 slider.on_changed(update)
 paramButtons.on_clicked(update2)
@@ -160,8 +171,8 @@ ma = np.nanmax(X,axis=0)
 st = abs(mi - ma) / 5
 print(st)
 
-x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
-u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
-ax2.quiver(x,y,z,u,v,w,length=st[0],normalize=True, color = "r", alpha=0.25)
+# x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
+# u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
+# ax2.quiver(x,y,z,u,v,w,length=st[0],normalize=True, color = "r", alpha=0.25)
 
 plt.show()
