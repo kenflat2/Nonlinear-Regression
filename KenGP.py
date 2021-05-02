@@ -25,7 +25,7 @@ embInterval = 1
 Xlen = 0
 Ylen = 0
 
-r = 1
+r = np.array([])
 
 # number of optimization steps
 optSteps = 20
@@ -77,35 +77,48 @@ setPriorDict = {
     0 : "none"
 }
 
+
+# IMPORTANT NOTE: THIS CODE ONLY WORKS FOR SQREXP BASED COVAR, DON'T KNOW HOW IT GENERALIZES TO OTHERS YET
 def covar(x1, x2, i1, i2, t):
-    global r, covarDict, covarFuncStr, X
-    cov = covarDict[covarFuncStr](x1, x2, t)
+    global r, covarDict, covarFuncStr, X, dim
+    
+    cov = covarDict[covarFuncStr](x1[:dim], x2[:dim], t)
+    
+    return cov * embCovarTerm(x1,x2)
 
+def embCovarTerm(x1,x2):
+    global r, numHP, covarFuncStr, X, dim
     # Adjust covariance to account for different timescales in time lags ( only works for sqexp at present, please be patient)
-    for i in range(1,embDim):
-        if i1 - i >= 0 and i2 - i >= 0:
-            xdif = X[i1-i] - X[i2-i]
-            lenscalei = numHP[covarFuncStr]+i-1 # index of current lengthscale param
-            cov *= np.exp(-hp[lenscalei] * np.dot(xdif,xdif) / r)
-
-    return cov
-
+    embCov = 1
+    for i in range(0,embDim):
+        hpi = numHP[covarFuncStr]+1 + i
+        embCov *= np.exp(-hp[hpi] * abs(x1[dim+i]-x2[dim+i]) / r[i])
+    return embCov
+    
 # Returns partial derivative of covar over a given hyperparameter
 def dCovardHp(i1, i2, h):
-    hi = h - numHP[covarFuncStr] + 1
+    global dim
+    numDefaultHP = numHP[covarFuncStr]+1
+    embHPi = h - numDefaultHP
+    yi = dim + embHPi # index of embedding dimension
     
     global X, r
-    if h < numHP[covarFuncStr] + 1:
-        return covarDerivDict[covarFuncStr][h-1](X[i1],X[i2],abs(i1-i2))
+    if h < numDefaultHP:
+        # print("embCovarTerm = ",embCovarTerm(X[i1],X[i2]))
+        normalCovarTerm = covarDerivDict[covarFuncStr][h-1](X[i1,:dim],X[i2,:dim],abs(i1-i2))
+        # print("Normal Covar Term = ", normalCovarTerm)
+        return normalCovarTerm * embCovarTerm(X[i1],X[i2])
     elif h < len(hp):
-        if 0 <= i1-hi or 0 <= i2-hi:
-            #print("Should not print")
-            return covar(X[i1], X[i2], i1, i2, abs(i1-i2)) * la.norm(X[i1-hi] - X[i2-hi]) / -r
-        else:
-            #print("This would access illegal elements")
-            return 0
+        freshTerm = abs(X[i1,yi] - X[i2,yi]) / -r[embHPi]
+        # print("freshTerm = ", freshTerm)
+        return covar(X[i1], X[i2], i1, i2, abs(i1-i2)) * freshTerm
     print("RHU RHO RAGGY, not a valid hyperparameter! h = ", h)
     return 0
+
+def setHP(ass):
+    global hp
+    if len(ass) == len(hp):
+        hp = ass
 
 def helpCovar():
     print("exp - exponential, sqrexp - squared exponential")
@@ -150,19 +163,23 @@ def setData(xd, yd):
     Xflat = X.flatten(order="F")
     Yflat = Y.flatten(order="F")
 
-    calculateR()
     createCovarMatrix()
     print("Data input success")
 
 def calculateR():
-    global X, r
+    global X, r,dim
+
+    r = np.amax(X[:,dim:], axis=0) - np.amin(X[:,dim:],axis=0)
+    r[r==0] = 10**-10
+    print("r ", r)
+    """
     for x1 in X:
         for x2 in X:
             dist = la.norm(x1-x2)
             if dist > r:
                 r = dist
     print("r = ", r, " versus approx ", 4.5 * np.sqrt(X.shape[1]))
-
+    """
     # APPROXIMATE VERSION
     # Since data is normalized, the expected max distance should be around 4.5(2.25 st in any direction) times length of diagonal in unit hypercube    
     # r = 4.5 * np.sqrt(X.shape[1])    
@@ -172,7 +189,7 @@ def setPrior(varNum, str):
     setPriorDict[varNum] = str
     print("Prior dict ", setPriorDict)
 
-def setDelayEmbedding(assignment):
+def setTimeDelayEmbedding(assignment):
     global embDim, hp, X, embInterval, Xlen, Ylen, Y, originalX, originalY
 
     # delete previous embeddings if they exist
@@ -183,6 +200,7 @@ def setDelayEmbedding(assignment):
     tmplen = X.shape[1]
 
     tmp = np.zeros([sum(x) for x in zip(X.shape,(0,sum(assignment)))])
+    print("tmp ",tmp.shape)
     tmp[:,:X.shape[1]] = X
     X = tmp
 
@@ -196,13 +214,13 @@ def setDelayEmbedding(assignment):
         for i in range(len(assignment)):
             for _ in range(assignment[i]):
                 newCol = X[:-embInterval*lag,i]
-                X = X[embInterval*lag:]
-                X[:, tmplen + newColInd] = newCol
-                lag += 1
+                X[embInterval*lag:, tmplen + newColInd] = newCol
                 newColInd += 1
+                lag += 1
+    X = X[embInterval*sum(assignment):]
     
     embDim = sum(assignment)
-    hp = np.append(hp, np.ones(embDim) * 0.5)
+    hp = np.append(hp, np.ones(embDim) * 0.1)
 
     # update size of X and of Y
     Xlen = X.shape[0]
@@ -271,7 +289,7 @@ def predict(xin):
 
     return (pred, predVar)
 
-def hyperParamOptimize(steps=20):
+def hyperParamOptimize(steps=20,yind=0):
     global hp, optSteps
     
     # time for RPROP
@@ -371,6 +389,9 @@ def hyperParamOptimize(steps=20):
     ax3.set_xlabel("Sigma")
     ax3.set_ylabel("Tau")
     plt.show()
+
+    print("=SPLIT(\"",hp[3],",",hp[4],",",hp[5],",",hp[6],"\",\",\")")
+    
     """
     hyper = np.zeros((10,10,10,4),dtype=np.float)
     for t in range(0,10):
@@ -395,12 +416,14 @@ def hyperParamOptimize(steps=20):
     plt.show()
     """
 
-def hyperParamLikelihood():
+def hyperParamLikelihood(yind=0):
     # print("Yflat ",Yflat.shape, " Kinvflat ", Kinvflat.shape)
-    yind = 1
     v = np.pi / np.sqrt(12)
     
-    print(la.slogdet(K), Y[:,yind].T @ Kinv @ Y[:,yind])
+    # print(Y.shape, K.shape, Kinv.shape, yind)
+          
+    # print(la.slogdet(K))
+    # print(Y[:,yind].T @ Kinv @ Y[:,yind])
     priorPenalty = np.log(2) - hp[2]**2 / (2*v) + np.log(np.sqrt(2*np.pi*v))
     return -0.5 * (la.slogdet(K)[1] + Y[:,yind].T @ Kinv @ Y[:,yind]) + priorPenalty
 
@@ -413,9 +436,8 @@ def hyperParamLikelihood():
     # return -0.5 * (np.log(la.norm(Kflat)) + np.transpose(Yflat) @ Kinvflat @ Yflat )
     # return -0.5 * (np.log(la.norm(K)) + np.transpose(Y) @ Kinv @ Y )
 
-def hyperParamGradient():
+def hyperParamGradient(yind=0):
     global hp
-    yind = 1
     # calculate gradient of K for hyperparams, requires custom partial derivative calculations
     grad = np.zeros(len(hp))
     
