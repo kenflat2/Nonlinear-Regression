@@ -55,7 +55,7 @@ covarDerivDict = {
                 ),
     "sqrexpf" : (   lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
                     lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * -hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2),
-                    lambda x1, x2, t: (hp[3]/2) * (((1 + hp[3]*t) ** (-3/2))) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
+                    lambda x1, x2, t: (-t/2) * ((1 + hp[3]*t) ** (-3/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
                 ),
     "sqrexpo" : (   lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
                     lambda x1, x2, t: -1 * np.dot(x1-x2,x1-x2) * hp[1] * ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
@@ -70,7 +70,8 @@ meanDict = {
 availablePriorDict = {
     "none" : lambda x: 0,
     "half-normal" : lambda x: x * np.pi / np.sqrt(12),
-    "ARD" : lambda x: -2 * np.exp(-(x**2)/np.pi)/np.pi
+    "ARD" : lambda x: -2 * np.exp(-(x**2)/np.pi)/np.pi,
+    "exponential" : lambda x : np.exp(-X.shape[0]/0.49*x)
 }
 
 setPriorDict = {
@@ -81,10 +82,11 @@ setPriorDict = {
 # IMPORTANT NOTE: THIS CODE ONLY WORKS FOR SQREXP BASED COVAR, DON'T KNOW HOW IT GENERALIZES TO OTHERS YET
 def covar(x1, x2, i1, i2, t):
     global r, covarDict, covarFuncStr, X, dim
-    
+
     cov = covarDict[covarFuncStr](x1[:dim], x2[:dim], t)
-    
-    return cov * embCovarTerm(x1,x2)
+    embT = embCovarTerm(x1,x2)
+
+    return cov * embT
 
 def embCovarTerm(x1,x2):
     global r, numHP, covarFuncStr, X, dim
@@ -119,6 +121,8 @@ def setHP(ass):
     global hp
     if len(ass) == len(hp):
         hp = ass
+    
+    print("Hp: ", hp)
 
 def helpCovar():
     print("exp - exponential, sqrexp - squared exponential")
@@ -137,14 +141,13 @@ def setCovar(covstr):
 
 def initPriors():
     global setPriorDict, embDim
-    
     for i in range(1,numHP[covarFuncStr]+1+embDim):
         if i not in setPriorDict:
             setPriorDict[i] = "none"
     print("Prior dict ", setPriorDict)
 
 def setData(xd, yd):
-    global X, Y, Xlen, Ylen, Xflat,Yflat, dim, r, embDim
+    global X, Y, Xlen, Ylen, Xflat,Yflat, dim, r, embDim, originalX, originalY
 
     originalX = xd
     originalY = yd
@@ -197,6 +200,14 @@ def setTimeDelayEmbedding(assignment):
         X = originalX
         Y = originalY
 
+    embDim = sum(assignment)
+
+    # delay embedding reset
+    if sum(assignment) == 0:
+        createCovarMatrix()
+        initPriors()
+        return
+
     tmplen = X.shape[1]
 
     tmp = np.zeros([sum(x) for x in zip(X.shape,(0,sum(assignment)))])
@@ -207,7 +218,7 @@ def setTimeDelayEmbedding(assignment):
     lag = 1
     newColInd = 0
     if len(assignment) != tmplen:
-        print("Assigment list doesn't match the number of variables in data array! ",assignment)
+        print("Assigment list doesn't match the number of variables in data array! ||",assignment,"|| != ",tmplen)
         return
     else:
         # code that creates the lags
@@ -219,7 +230,6 @@ def setTimeDelayEmbedding(assignment):
                 lag += 1
     X = X[embInterval*sum(assignment):]
     
-    embDim = sum(assignment)
     hp = np.append(hp, np.ones(embDim) * 0.1)
 
     # update size of X and of Y
@@ -390,7 +400,7 @@ def hyperParamOptimize(steps=20,yind=0):
     ax3.set_ylabel("Tau")
     plt.show()
 
-    print("=SPLIT(\"",hp[3],",",hp[4],",",hp[5],",",hp[6],"\",\",\")")
+    #print("=SPLIT(\"",hp[3],",",hp[4],",",hp[5],",",hp[6],"\",\",\")")
     
     """
     hyper = np.zeros((10,10,10,4),dtype=np.float)
