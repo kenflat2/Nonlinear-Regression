@@ -348,7 +348,7 @@ def hyperParamOptimize(steps=20,yind=0):
     rhoplus = 1.2 # if the sign of the gradient doesn't change, must be > 1
     rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
 
-    hypermin = 1 * (10**-8)
+    hypermin = 1 * (10**-10)
     hypermax = 10
 
     i = 0

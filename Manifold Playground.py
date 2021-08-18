@@ -3,6 +3,7 @@ import pandas as pd
 import numpy.linalg as la
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import Slider, Button, RadioButtons
 
 
@@ -29,6 +30,13 @@ def RosslerP(xi, t, a, b, c):
 
     return np.array( [dx,dy,dz] )
 
+def Sprott(xi, t):
+    (x,y,z) = xi
+    return ( y,-x - np.sign(z)*y, y**2 - np.exp(-x**2))
+
+def SprottP(xi, t, d):
+    (x,y,z) = xi
+    return ( y, -x - np.sign(z)*y, y**2 - d*np.exp(-x**2))
 
 def Lorenz(xi,t):
     rho = 25.0
@@ -54,21 +62,21 @@ def Lorenz96(x, t):
         d[i] = (x[(i + 1) % N] - x[i - 2]) * x[i - 1] - x[i] + F
     return d    
 
-begin = 0
-end = 10
-step = 0.05
-tlen = int((end-begin)/step)
+end = 2 ** 8
+tlen = 2 ** 10
 trainToTest = 0.8 # between 0 and 1
-t = np.arange(begin, end, step)
+t = np.linspace(0, end, num = tlen)
 
 # MAKE SURE TO UPDATE THE DIMENSION WHEN SWITCHING ATTRACTORS
 dim = 3
-t0 = np.array([1,1,7])# np.zeros(dim) * 2
+t0 = np.array([1,1,1])# np.zeros(dim) * 2
 t0[0] += 0.1
 
 # STATIONARY SIMULATION VERSION: UPDATE ATTRACTOR YOU WANT HERE
 #               \/\/\/\/
-states = odeint(Rossler,t0,t)
+# states = odeint(Sprott,t0,t)
+p1 = 0.5
+states = odeint(SprottP,t0,t, args=(0.5,))
 # END STATIONARY SIMULATION
 
 # FROM DATA
@@ -81,13 +89,26 @@ print(states)
 # END FROM DATA
 
 
-# NON STATIONARY VERSION
+# NON STATIONARY VERSIONS
 
+"""
+# Sprott
+d = lambda t : np.exp(-t)
+
+largs = lambda t : tuple(d(t))
+
+states = np.zeros((tlen,3))
+states[0] = t0
+for i in range(1, tlen ):
+    # print(largs(i))
+    states[i] = odeint(SprottP,states[i-1],np.array([t[i-1],t[i]]),args=largs(i))[1,:]
+Xr = standardize(states[settlingTime:])
+"""
+"""
 p1 = 0.2
 p2 = 0.2
 p3 = 5.7
 
-"""
 deltaP = 0.01
 states = np.zeros((tlen,3))
 states[0] = t0
@@ -116,23 +137,23 @@ else:
 # user interaction stuff
 fig3 = plt.figure(3)
 sliderAx = plt.axes()
-slider = Slider(sliderAx,"Tao", 0, 8, valinit=0, valstep=0.1)
+slider = Slider(sliderAx,"d", 0, 1, valinit=0, valstep=0.01)
 
 fig4 = plt.figure(4)
 paramAx = plt.axes()
-paramButtons = RadioButtons(paramAx, ("a","b","c"), active = 0)
+paramButtons = RadioButtons(paramAx, ("d",), active = 0)
 
 def update(val):
     global p1, p2, p3
-    if (paramButtons.value_selected == "a"):
+    if (paramButtons.value_selected == "d"):
         p1 = slider.val
-    elif (paramButtons.value_selected == "b"):
-        p2 = slider.val
-    elif (paramButtons.value_selected == "c"):
-        p3 = slider.val
+    # elif (paramButtons.value_selected == "b"):
+    #     p2 = slider.val
+    # elif (paramButtons.value_selected == "c"):
+    #     p3 = slider.val
 
     # Line Plot Update
-    s = odeint(RosslerP,t0,t, args=(p1,p2,p3))
+    s = odeint(SprottP,t0,t, args=(p1,))
     ax2.clear()
     ax2.plot(s[:,0], s[:,1], s[:,2])
 
@@ -151,12 +172,12 @@ def update(val):
 
 def update2(val):
     global p1, p2, p3
-    if (paramButtons.value_selected == "a"):
+    if (paramButtons.value_selected == "d"):
         slider.set_val(p1)
-    elif (paramButtons.value_selected == "b"):
-        slider.set_val(p2)
-    elif (paramButtons.value_selected == "c"):
-        slider.set_val(p3)
+    # elif (paramButtons.value_selected == "b"):
+    #     slider.set_val(p2)
+    # elif (paramButtons.value_selected == "c"):
+    #     slider.set_val(p3)
 
 slider.on_changed(update)
 paramButtons.on_clicked(update2)
