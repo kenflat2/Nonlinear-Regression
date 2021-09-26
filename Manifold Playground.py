@@ -34,9 +34,15 @@ def Sprott(xi, t):
     (x,y,z) = xi
     return ( y,-x - np.sign(z)*y, y**2 - np.exp(-x**2))
 
+"""
 def SprottP(xi, t, d):
     (x,y,z) = xi
     return ( y, -x - np.sign(z)*y, y**2 - d*np.exp(-x**2))
+"""
+
+def SprottP(xi, t, d):
+    (x,y,z) = xi
+    return ( y/d, -x - np.sign(z)*y*d, y**(2) - d*np.exp(-x**2))
 
 def Lorenz(xi,t):
     rho = 25.0
@@ -63,7 +69,7 @@ def Lorenz96(x, t):
     return d    
 
 end = 2 ** 8
-tlen = 2 ** 10
+tlen = 2 ** 11
 trainToTest = 0.8 # between 0 and 1
 t = np.linspace(0, end, num = tlen)
 
@@ -75,8 +81,9 @@ t0[0] += 0.1
 # STATIONARY SIMULATION VERSION: UPDATE ATTRACTOR YOU WANT HERE
 #               \/\/\/\/
 # states = odeint(Sprott,t0,t)
-p1 = 0.5
-states = odeint(SprottP,t0,t, args=(0.5,))
+# p1 = 0.5
+# states = odeint(SprottP,t0,t, args=(0.5,))
+states = odeint(LorenzP,t0,t, args=(0.5,))
 # END STATIONARY SIMULATION
 
 # FROM DATA
@@ -160,12 +167,16 @@ def update(val):
     # Quiver Update
     mi = np.nanmin(s,axis=0)
     ma = np.nanmax(s,axis=0)
-    st = abs(mi - ma) / 5
+    st = 10
     print(st)
 
     # x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
     # u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
     # ax2.quiver(x,y,z,u,v,w,length=5,normalize=True, color = "r", alpha = 0.25)
+
+    x, y, z = np.meshgrid(np.linspace(mi[0],ma[0],num=st), np.linspace(mi[1],ma[1],num=st),np.linspace(mi[2],ma[2],num=st))
+    u, v, w = SprottP((x,y,z),0,p1)
+    ax2.quiver(x,y,z,u,v,w,length=0.5,normalize=True, color = "r", alpha=0.25)
     
     fig2.canvas.draw()
     fig2.canvas.flush_events()
@@ -189,11 +200,15 @@ ax2 = fig2.gca(projection="3d")
 
 mi = np.nanmin(X,axis=0)
 ma = np.nanmax(X,axis=0)
-st = abs(mi - ma) / 5
+st = 10
 print(st)
 
 # x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
 # u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
 # ax2.quiver(x,y,z,u,v,w,length=st[0],normalize=True, color = "r", alpha=0.25)
+
+x, y, z = np.meshgrid(np.linspace(mi[0],ma[0],num=st), np.linspace(mi[1],ma[1],num=st),np.linspace(mi[2],ma[2],num=st))
+u, v, w = Sprott((x,y,z),0)
+ax2.quiver(x,y,z,u,v,w,length=0.5,normalize=True, color = "r", alpha=0.25)
 
 plt.show()
