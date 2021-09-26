@@ -223,6 +223,7 @@ def setTimeDelayEmbedding(assignment):
     else:
         # code that creates the lags
         for i in range(len(assignment)):
+            lag = 1
             for _ in range(assignment[i]):
                 newCol = X[:-embInterval*lag,i]
                 X[embInterval*lag:, tmplen + newColInd] = newCol
