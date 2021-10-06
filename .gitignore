@@ -1,5 +1,6 @@
 # These are just cache files I believe, no need to include them
 *.pyc
 *.png
+*.csv
 
 Pictures
