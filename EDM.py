@@ -31,8 +31,8 @@ def nearestNeighborsPrediction(state):
     return sum(pred1neigh) / numNeighbors
 
 # make a 1 time step prediction based on a given state(nD vector)
-def SMapPrediction(state,states, theta):
-    W = getWeightedValues(state, states, theta)
+def SMapPrediction(state,states, theta, d):
+    W = getWeightedValues(state, states, theta, d)
     W = np.delete(W, (-1), axis = 0)
     X = np.delete(states, (-1), axis=0)
     Y = np.delete(states, (0), axis=0)
@@ -40,33 +40,28 @@ def SMapPrediction(state,states, theta):
     # print("State ", state, "H ",H, "Prediction ", state @ H)
     return state @ H
 
-def getWeightedValues(state, states, theta):
-    d = calculateD(state, states)
+def getWeightedValues(state, states, theta, d):
     # calculate weights for each element
-    weights = []
+    return np.exp(-1 * theta * la.norm(states-state,axis=1) / d)
+    """
+    weights = np.zeros(states.shape[0])
     current = np.array(state)
-    for elem in states:
+    for i, elem in enumerate(states):
         diff = current - elem
         norm = la.norm(diff)
         exponent = -1 * theta * norm / d
-        weights.append(np.e ** exponent)
+        weights[i] = np.exp(exponent)
     return weights
+    """
+    
+def calculateD(states):
+    return np.mean(np.fromfunction(lambda i,j: la.norm(states[i]-states[j]),(states.shape[1],states.shape[1]),dtype=int))
 
-def calculateD(state, states):
-    norms = []
-    current = np.array(state)
-    for elem in states:
-        diff = current - elem
-        norm = la.norm(diff)
-        norms.append(norm)
-    d = sum(norms) / len(norms)
-    return d
-
-def getMegaPrediction(num, trainStates, theta):
+def getMegaPrediction(num, trainStates, theta, d):
     megaPrediction = []
     prevState = trainStates[-1]
     for i in range(num):
-        prevState = SMapPrediction(prevState, trainStates, theta)
+        prevState = SMapPrediction(prevState, trainStates, theta, d)
         megaPrediction.append(prevState)
 
     return megaPrediction
@@ -75,18 +70,22 @@ def getMegaPrediction(num, trainStates, theta):
     z = list(map(lambda elem: elem[2], megaPrediction))
 # main logic
 start = 0
-end = 50
-step = .05
-testvtrainratio = .9
-cutoff = int(end * (1/step) * testvtrainratio)
+end = 2**5
+tlen = 2**10
+testvtrainratio = .95
+cutoff = int(tlen * testvtrainratio)
 
 state0 = np.array([1.0, 2.0, 4.0])
-t = np.arange(start, end, step)
+t = np.linspace(start, end, num=tlen)
 
 # generate input data
 states = odeint(f, state0, t)
 trainStates = states[:cutoff]
 testStates = states[cutoff:]
+
+d = calculateD(states)
+print("D = ", d)
+
 # print(trainStates)
 
 # Read input data from files
@@ -105,10 +104,10 @@ i1 = np.array([4,7,2])
 pred1 = nearestNeighborsPrediction(i1)
 print(pred1)
 
-pred2 = SMapPrediction(i1,trainStates, 4)
+pred2 = SMapPrediction(i1,trainStates, 4, d)
 print("SMap Prediction = ", pred2)
 
-megaPrediction = getMegaPrediction(30, trainStates, 0)
+megaPrediction = getMegaPrediction(int(tlen*(1-testvtrainratio)), trainStates, 12, d)
 stateDistance = list(map(lambda pred, actual: la.norm(pred-actual),megaPrediction,testStates))
 # print(stateDistance)
 
@@ -124,27 +123,32 @@ ax.scatter(x,y,z,c='r',marker='o')
 # input dynamics
 ax = fig.gca(projection="3d")
 ax.plot(states[:, 0], states[:, 1], states[:, 2])
+ax.set_title("Training Data")
 fig2 = plt.figure(2)
+
 # prediction iterated over time
 ax1 = fig2.gca(projection="3d")
 ax1.plot(x, y, z, color='tab:red')
 ax1.plot(testStates[:,0],testStates[:,1],testStates[:,2],color='tab:blue')
-ax1.set_title("Predicted(red) vs Acutal(blue)")
+ax1.set_title("Feed Forward Prediction(red) vs Acutal Test Data(blue)")
 
 # prediction accuracy over time
 fig3 = plt.figure(3)
 ax2 = fig3.add_subplot()
 ax2.plot(range(len(stateDistance)), stateDistance)
+ax2.set_ylabel("Error")
+ax2.set_xlabel("Time Steps")
 
 # user interaction stuff
 fig4 = plt.figure(4)
 thetaAx = plt.axes()
-thetaChooser = Slider(thetaAx,"Theta", 0, 15, valinit=0, valstep=1)
+thetaChooser = Slider(thetaAx,"Theta", 0, 15, valinit=12, valstep=1)
+thetaAx.set_title("High Theta = small neighborhood, low = large neighborhood")
 
 def update(val):
     theta = thetaChooser.val
         
-    megaPrediction = getMegaPrediction(50, trainStates, theta)
+    megaPrediction = getMegaPrediction(int(tlen*(1-testvtrainratio)), trainStates, theta,d)
     stateDistance = list(map(lambda pred, actual: la.norm(pred-actual),megaPrediction,testStates))
     # print(stateDistance)
 
