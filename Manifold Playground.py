@@ -68,22 +68,24 @@ def Lorenz96(x, t):
         d[i] = (x[(i + 1) % N] - x[i - 2]) * x[i - 1] - x[i] + F
     return d    
 
-end = 2 ** 8
-tlen = 2 ** 11
+end = 2 ** 7
+tlen = 2 ** 12
 trainToTest = 0.8 # between 0 and 1
 t = np.linspace(0, end, num = tlen)
 
 # MAKE SURE TO UPDATE THE DIMENSION WHEN SWITCHING ATTRACTORS
 dim = 3
+# t0 = np.array([1,5,15])
 t0 = np.array([1,1,1])# np.zeros(dim) * 2
 t0[0] += 0.1
 
 # STATIONARY SIMULATION VERSION: UPDATE ATTRACTOR YOU WANT HERE
 #               \/\/\/\/
 # states = odeint(Sprott,t0,t)
+states = odeint(Rossler,t0,t)
 # p1 = 0.5
 # states = odeint(SprottP,t0,t, args=(0.5,))
-states = odeint(LorenzP,t0,t, args=(0.5,))
+# states = odeint(LorenzP,t0,t, args=(0.5,))
 # END STATIONARY SIMULATION
 
 # FROM DATA
@@ -135,11 +137,14 @@ Y = states[1:,]
 # Print Input
 fig2 = plt.figure(2)
 ax2 = fig2.gca(projection="3d")
+ax2._axis3don = False
+ax2.set_facecolor("black")
+
 if dim == 2:
     ax2 = plt.subplot()
     ax2.plot(X[:,0],X[:,1])
 else:
-    ax2.plot(X[:,0],X[:,1],X[:,2])
+    ax2.plot(X[:,0],X[:,1],X[:,2], alpha = 1, c="white")
 
 # user interaction stuff
 fig3 = plt.figure(3)
@@ -160,9 +165,10 @@ def update(val):
     #     p3 = slider.val
 
     # Line Plot Update
-    s = odeint(SprottP,t0,t, args=(p1,))
+    s = odeint(Sprott,t0,t)
+    # s = odeint(SprottP,t0,t, args=(p1,))
     ax2.clear()
-    ax2.plot(s[:,0], s[:,1], s[:,2])
+    ax2.plot(s[:,0], s[:,1], s[:,2], alpha=0.5)
 
     # Quiver Update
     mi = np.nanmin(s,axis=0)
@@ -174,9 +180,9 @@ def update(val):
     # u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
     # ax2.quiver(x,y,z,u,v,w,length=5,normalize=True, color = "r", alpha = 0.25)
 
-    x, y, z = np.meshgrid(np.linspace(mi[0],ma[0],num=st), np.linspace(mi[1],ma[1],num=st),np.linspace(mi[2],ma[2],num=st))
-    u, v, w = SprottP((x,y,z),0,p1)
-    ax2.quiver(x,y,z,u,v,w,length=0.5,normalize=True, color = "r", alpha=0.25)
+    # x, y, z = np.meshgrid(np.linspace(mi[0],ma[0],num=st), np.linspace(mi[1],ma[1],num=st),np.linspace(mi[2],ma[2],num=st))
+    # u, v, w = SprottP((x,y,z),0,p1)
+    # ax2.quiver(x,y,z,u,v,w,length=0.5,normalize=True, color = "r", alpha=0.25)
     
     fig2.canvas.draw()
     fig2.canvas.flush_events()
@@ -207,8 +213,8 @@ print(st)
 # u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
 # ax2.quiver(x,y,z,u,v,w,length=st[0],normalize=True, color = "r", alpha=0.25)
 
-x, y, z = np.meshgrid(np.linspace(mi[0],ma[0],num=st), np.linspace(mi[1],ma[1],num=st),np.linspace(mi[2],ma[2],num=st))
-u, v, w = Sprott((x,y,z),0)
-ax2.quiver(x,y,z,u,v,w,length=0.5,normalize=True, color = "r", alpha=0.25)
+# x, y, z = np.meshgrid(np.linspace(mi[0],ma[0],num=st), np.linspace(mi[1],ma[1],num=st),np.linspace(mi[2],ma[2],num=st))
+# u, v, w = Sprott((x,y,z),0)
+# ax2.quiver(x,y,z,u,v,w,length=0.5,normalize=True, color = "r", alpha=0.25)
 
 plt.show()
