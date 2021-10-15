@@ -68,6 +68,7 @@ def getMegaPrediction(num, trainStates, theta, d):
     x = list(map(lambda elem: elem[0], megaPrediction))
     y = list(map(lambda elem: elem[1], megaPrediction))
     z = list(map(lambda elem: elem[2], megaPrediction))
+    
 # main logic
 start = 0
 end = 2**5

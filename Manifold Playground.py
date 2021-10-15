@@ -68,25 +68,45 @@ def Lorenz96(x, t):
         d[i] = (x[(i + 1) % N] - x[i - 2]) * x[i - 1] - x[i] + F
     return d    
 
-end = 2 ** 7
-tlen = 2 ** 12
+def RosenzweigMacArthur(x, t, p):    
+    dx = x[0]*(1-x[0]) - p["c1"] * x[0] * x[1] / (1.0 + p["h1"]*x[0])
+    dy = p["c1"] * x[0] * x[1] / (1.0 + p["h1"] * x[0]) - p["c2"] * x[1] * x[2] / (1.0 + p["h2"] * x[1]) - p["m2"]*x[1]
+    dz = p["c2"] * x[1] * x[2] / (1.0 + p["h2"] * x[1]) - p["m3"] * x[2]
+
+    return (dx, dy, dz)
+
+end = 2 ** 9
+tlen = 2 ** 9
 trainToTest = 0.8 # between 0 and 1
 t = np.linspace(0, end, num = tlen)
 
 # MAKE SURE TO UPDATE THE DIMENSION WHEN SWITCHING ATTRACTORS
 dim = 3
 # t0 = np.array([1,5,15])
-t0 = np.array([1,1,1])# np.zeros(dim) * 2
-t0[0] += 0.1
+# t0 = np.array([1,1,1])# np.zeros(dim) * 2
+t0 = np.array([0.8,0.1,9])
+# t0[0] += 0.1
+
+# include the number of parameters
+nParams = 6
+params = {"c1":5.0,
+     "h1":3.0,
+     "c2":0.1,
+     "h2":2.0,
+     "m2":0.4,
+     "m3":0.008}
+
+p0 = list(params.keys())[0]
+
+print(t0)
 
 # STATIONARY SIMULATION VERSION: UPDATE ATTRACTOR YOU WANT HERE
 #               \/\/\/\/
+states = odeint(RosenzweigMacArthur,t0,t,args=(params,))
 # states = odeint(Sprott,t0,t)
-states = odeint(Rossler,t0,t)
-# p1 = 0.5
-# states = odeint(SprottP,t0,t, args=(0.5,))
 # states = odeint(LorenzP,t0,t, args=(0.5,))
-# END STATIONARY SIMULATION
+
+# END STATIONARY SIMULATIONS
 
 # FROM DATA
 """
@@ -149,32 +169,36 @@ else:
 # user interaction stuff
 fig3 = plt.figure(3)
 sliderAx = plt.axes()
-slider = Slider(sliderAx,"d", 0, 1, valinit=0, valstep=0.01)
+slider = Slider(sliderAx,"Slider", 0, 6, valinit=params["c1"], valstep=0.1)
 
 fig4 = plt.figure(4)
 paramAx = plt.axes()
-paramButtons = RadioButtons(paramAx, ("d",), active = 0)
+paramButtons = RadioButtons(paramAx, params.keys(), active = 0)
 
 def update(val):
-    global p1, p2, p3
-    if (paramButtons.value_selected == "d"):
-        p1 = slider.val
+    global p0, params
+    # global p1, p2, p3
+    params[p0] = slider.val
+        # p1 = slider.val
     # elif (paramButtons.value_selected == "b"):
     #     p2 = slider.val
     # elif (paramButtons.value_selected == "c"):
     #     p3 = slider.val
 
     # Line Plot Update
-    s = odeint(Sprott,t0,t)
+    # s = odeint(Sprott,t0,t)
     # s = odeint(SprottP,t0,t, args=(p1,))
+
+    s = odeint(RosenzweigMacArthur,t0,t,args=(params,))
     ax2.clear()
     ax2.plot(s[:,0], s[:,1], s[:,2], alpha=0.5)
+    ax2._axis3don = False
+    ax2.set_facecolor("black")
 
     # Quiver Update
     mi = np.nanmin(s,axis=0)
     ma = np.nanmax(s,axis=0)
     st = 10
-    print(st)
 
     # x, y, z = np.meshgrid(np.arange(mi[0],ma[0],st[0]), np.arange(mi[1],ma[1],st[1]),np.arange(mi[2],ma[2],st[2]))
     # u, v, w = (sigma * (y - x), x * (rho - z) - y, x * y - beta * z)
@@ -188,9 +212,15 @@ def update(val):
     fig2.canvas.flush_events()
 
 def update2(val):
-    global p1, p2, p3
-    if (paramButtons.value_selected == "d"):
-        slider.set_val(p1)
+    global p0
+    p0 = val
+    slider.valmax = 18
+    slider.set_val(params[p0])
+    fig3.canvas.draw()
+    fig3.canvas.flush_events()
+    
+    # if (paramButtons.value_selected == "d"):
+    #     slider.set_val(p1)
     # elif (paramButtons.value_selected == "b"):
     #     slider.set_val(p2)
     # elif (paramButtons.value_selected == "c"):
@@ -202,7 +232,6 @@ paramButtons.on_clicked(update2)
 # Quiver Plot
 fig2 = plt.figure(2)
 ax2 = fig2.gca(projection="3d")
-
 
 mi = np.nanmin(X,axis=0)
 ma = np.nanmax(X,axis=0)
