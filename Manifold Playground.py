@@ -68,6 +68,16 @@ def Lorenz96(x, t):
         d[i] = (x[(i + 1) % N] - x[i - 2]) * x[i - 1] - x[i] + F
     return d    
 
+def Lorenz96P(x, t, F):
+    N = 5 # dimension
+
+    # Setting up vector
+    d = np.zeros(N)
+    # Loops over indices (with operations and Python underflow indexing handling edge cases)
+    for i in range(N):
+        d[i] = (x[(i + 1) % N] - x[i - 2]) * x[i - 1] - x[i] + F
+    return d   
+
 def RosenzweigMacArthur(x, t, p):    
     dx = x[0]*(1-x[0]) - p["c1"] * x[0] * x[1] / (1.0 + p["h1"]*x[0])
     dy = p["c1"] * x[0] * x[1] / (1.0 + p["h1"] * x[0]) - p["c2"] * x[1] * x[2] / (1.0 + p["h2"] * x[1]) - p["m2"]*x[1]
@@ -75,20 +85,23 @@ def RosenzweigMacArthur(x, t, p):
 
     return (dx, dy, dz)
 
-end = 2 ** 9
-tlen = 2 ** 9
+end = 2 ** 7
+tlen = 2 ** 13
 trainToTest = 0.8 # between 0 and 1
 t = np.linspace(0, end, num = tlen)
 
 # MAKE SURE TO UPDATE THE DIMENSION WHEN SWITCHING ATTRACTORS
-dim = 3
+dim = 5
 # t0 = np.array([1,5,15])
 # t0 = np.array([1,1,1])# np.zeros(dim) * 2
-t0 = np.array([0.8,0.1,9])
-# t0[0] += 0.1
+# t0 = np.array([0.8,0.1,9])
+t0 = np.ones(dim)
+t0[0] += 0.1
 
 # include the number of parameters
-nParams = 6
+nParams = 1
+embst = 12
+"""
 params = {"c1":5.0,
      "h1":3.0,
      "c2":0.1,
@@ -96,16 +109,25 @@ params = {"c1":5.0,
      "m2":0.4,
      "m3":0.008}
 
+params = {"rho" : 28.0,
+          "sigma" : 10,
+          "beta" : 8/3}
+
+params = {"d" : 1}
+"""
+params = {"F" : 8}
 p0 = list(params.keys())[0]
 
 print(t0)
 
 # STATIONARY SIMULATION VERSION: UPDATE ATTRACTOR YOU WANT HERE
 #               \/\/\/\/
-states = odeint(RosenzweigMacArthur,t0,t,args=(params,))
+# states = odeint(RosenzweigMacArthur,t0,t,args=(params,))
 # states = odeint(Sprott,t0,t)
 # states = odeint(LorenzP,t0,t, args=(0.5,))
-
+def makeData():
+    return odeint(Lorenz96P,t0,t, args=tuple(params.values()))
+states = makeData()
 # END STATIONARY SIMULATIONS
 
 # FROM DATA
@@ -157,19 +179,24 @@ Y = states[1:,]
 # Print Input
 fig2 = plt.figure(2)
 ax2 = fig2.gca(projection="3d")
-ax2._axis3don = False
-ax2.set_facecolor("black")
-
+ax2._axis3don = True
+ax2.set_facecolor("white")
+"""
 if dim == 2:
     ax2 = plt.subplot()
     ax2.plot(X[:,0],X[:,1])
 else:
-    ax2.plot(X[:,0],X[:,1],X[:,2], alpha = 1, c="white")
+    # ax2.plot(X[:,0],X[:,1],X[:,2], alpha = 1, c="white")
+    ax2.plot(X[:-2*embst,0],X[1*embst:-1*embst,0],X[2*embst:,0], alpha = 1, c="black")
+"""
+ax2.plot(X[:,0], X[:,1], X[:,2])
+# ax2.plot(X[:-2*embst,0],X[1*embst:-1*embst,0],X[2*embst:,0], alpha = 1, c="black")
+
 
 # user interaction stuff
 fig3 = plt.figure(3)
 sliderAx = plt.axes()
-slider = Slider(sliderAx,"Slider", 0, 6, valinit=params["c1"], valstep=0.1)
+slider = Slider(sliderAx, "Slider", 0, 20, valinit=list(params.values())[0], valstep=0.1)
 
 fig4 = plt.figure(4)
 paramAx = plt.axes()
@@ -189,11 +216,13 @@ def update(val):
     # s = odeint(Sprott,t0,t)
     # s = odeint(SprottP,t0,t, args=(p1,))
 
-    s = odeint(RosenzweigMacArthur,t0,t,args=(params,))
+    s = makeData()
+    # s = odeint(LorenzP,t0,t,args=(params,))
     ax2.clear()
-    ax2.plot(s[:,0], s[:,1], s[:,2], alpha=0.5)
-    ax2._axis3don = False
-    ax2.set_facecolor("black")
+    # ax2.plot(s[:,0], s[:,1], s[:,2], alpha=0.5)
+    ax2.plot(s[:-2*embst,0], s[1*embst:-1*embst,0], s[2*embst:,0], alpha=1, c="black")
+    ax2._axis3don = True
+    ax2.set_facecolor("white")
 
     # Quiver Update
     mi = np.nanmin(s,axis=0)
@@ -214,7 +243,6 @@ def update(val):
 def update2(val):
     global p0
     p0 = val
-    slider.valmax = 18
     slider.set_val(params[p0])
     fig3.canvas.draw()
     fig3.canvas.flush_events()

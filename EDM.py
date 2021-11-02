@@ -17,6 +17,16 @@ beta = 8.0 / 3.0
 
 numNeighbors = 3
 
+def Lorenz96P(x, t, F):
+    N = 5 # dimension
+
+    # Setting up vector
+    d = np.zeros(N)
+    # Loops over indices (with operations and Python underflow indexing handling edge cases)
+    for i in range(N):
+        d[i] = (x[(i + 1) % N] - x[i - 2]) * x[i - 1] - x[i] + F(t)
+    return d   
+
 def f(state,t):
     x, y, z = state  # Unpack the state vector
     return sigma * (y - x), x * (rho - z) - y, x * y - beta * z  # Derivatives
@@ -69,18 +79,60 @@ def getMegaPrediction(num, trainStates, theta, d):
     y = list(map(lambda elem: elem[1], megaPrediction))
     z = list(map(lambda elem: elem[2], megaPrediction))
     
+def standardize(x):
+    return (x - np.mean(x, axis=0)) / np.std(x, axis=0)
+
+def delayEmbed(Xin, Yin,assignment,embInterval):
+    
+    tmplen = Xin.shape[1]
+
+    tmp = np.zeros([sum(x) for x in zip(Xin.shape,(0,sum(assignment)))])
+    tmp[:,:Xin.shape[1]] = Xin
+    Xin = tmp
+
+    lag = 1
+    newColInd = 0
+    if len(assignment) != tmplen:
+        print("Assigment list doesn't match the number of variables in data array! ",assignment)
+        return
+    else:
+        # code that creates the lags
+        for i in range(len(assignment)):
+            lag = 1
+            for _ in range(assignment[i]):
+                newCol = Xin[:-embInterval*lag,i]
+                Xin[embInterval*lag:, tmplen + newColInd] = newCol
+                newColInd += 1
+                lag += 1
+    Xin = Xin[embInterval*sum(assignment):]
+    Yin = Yin[embInterval*sum(assignment):]
+    
+    # Yin = Yin[-X.shape[0]:]
+    
+    return (Xin, Yin)
+
 # main logic
 start = 0
-end = 2**5
-tlen = 2**10
+end = 2**7
+tlen = 2**14
+reduction = 2 ** 4
 testvtrainratio = .95
-cutoff = int(tlen * testvtrainratio)
+cutoff = int(tlen * testvtrainratio / reduction)
 
-state0 = np.array([1.0, 2.0, 4.0])
+# state0 = np.array([1.0, 2.0, 4.0])
+t0 = np.ones(5)
+t0[0] += 0.1
 t = np.linspace(start, end, num=tlen)
 
 # generate input data
-states = odeint(f, state0, t)
+# states = odeint(f, state0, t)
+F = lambda t : 7 + 2 * t / end
+states = standardize(odeint(Lorenz96P, t0, t, args=(F,))[::reduction,0,None])
+t = t[::reduction]
+np.set_printoptions(suppress=True)
+print(states, t)
+states = np.hstack([states, t.reshape((t.shape[0], 1))]) # this is the GMAP step
+print(states)
 trainStates = states[:cutoff]
 testStates = states[cutoff:]
 
@@ -101,7 +153,7 @@ z = list(map(lambda elem: elem[2], states))
 """
 
 # states contains a numpy array of lorenz equations time series data
-i1 = np.array([4,7,2])
+i1 = np.array([52,33])
 pred1 = nearestNeighborsPrediction(i1)
 print(pred1)
 
