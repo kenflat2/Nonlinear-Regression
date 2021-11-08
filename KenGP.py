@@ -44,8 +44,8 @@ hp = np.ones(1 + numHP[covarFuncStr]) * 0.1 # array of hyperparameters for a giv
 covarDict = {
     "exp" : lambda x1, x2, t: hp[1] * np.exp( -hp[2] * (np.dot(x1-x2,x1-x2) ** (1/2))),                                 # hp[1] = tau, hp[2] = phi
     "sqrexp" : lambda x1, x2, t: hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
-    # "sqrexpf" : lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),        # hp[3] = delta(forgetting rate)
-    "sqrexpf" : lambda x1, x2, t: ((1 + hp[3]*(t**2)) ** (-1/4)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),        # hp[3] = delta(forgetting rate)
+    "sqrexpf" : lambda x1, x2, t: ((1 + hp[3]*t) ** (-1/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),        # hp[3] = delta(forgetting rate)
+    # "sqrexpf" : lambda x1, x2, t: ((1 + hp[3]*(t**2)) ** (-1/4)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),        # hp[3] = delta(forgetting rate)
     
     # 1 : tau, 2 : phi_x, 3 : Vz*phi_a
     "sqrexpo" : lambda x1, x2, t: hp[1] * ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),  
@@ -56,8 +56,8 @@ covarDerivDict = {
                 ),
     "sqrexpf" : (   lambda x1, x2, t: ((1 + hp[3]*(t**2)) ** (-1/4)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
                     lambda x1, x2, t: ((1 + hp[3]*(t**2)) ** (-1/4)) * -hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)) * np.dot(x1-x2,x1-x2),
-                    # lambda x1, x2, t: (-t/2) * ((1 + hp[3]*t) ** (-3/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
-                    lambda x1, x2, t: (-t/4) * ((1 + hp[3]*(t**2)) ** (-5/4)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
+                    lambda x1, x2, t: (-t/2) * ((1 + hp[3]*t) ** (-3/2)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
+                    # lambda x1, x2, t: (-t/4) * ((1 + hp[3]*(t**2)) ** (-5/4)) * hp[1] * np.exp( -hp[2] * np.dot(x1-x2,x1-x2))
                 ),
     "sqrexpo" : (   lambda x1, x2, t: ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
                     lambda x1, x2, t: -1 * np.dot(x1-x2,x1-x2) * hp[1] * ((1 + 2*hp[3]*t) ** (-1/2)) * np.exp( -hp[2] * np.dot(x1-x2,x1-x2)),
