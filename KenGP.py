@@ -372,7 +372,7 @@ def hyperParamOptimize(steps=20,yind=0):
 
         s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
         spos = np.ceil(s) # 0 for - vals, 1 for + vals
-        sneg = -1 * (spos - 1) # oh dear i am such a clever fellow
+        sneg = -1 * (spos - 1)
 
         delta = np.multiply((rhoplus * spos) + (rhominus * sneg), deltaPrev)
         dweights = np.multiply(delta, ( np.ceil(grad) - 0.5 ) * 2) # make sure signs reflect the orginal gradient
