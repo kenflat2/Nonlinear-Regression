@@ -91,16 +91,16 @@ trainToTest = 0.8 # between 0 and 1
 t = np.linspace(0, end, num = tlen)
 
 # MAKE SURE TO UPDATE THE DIMENSION WHEN SWITCHING ATTRACTORS
-dim = 5
-# t0 = np.array([1,5,15])
+dim = 3
+t0 = np.array([1,5,15])
 # t0 = np.array([1,1,1])# np.zeros(dim) * 2
 # t0 = np.array([0.8,0.1,9])
-t0 = np.ones(dim)
+# t0 = np.ones(dim)
 t0[0] += 0.1
 
 # include the number of parameters
-nParams = 1
-embst = 12
+nParams = 0
+embst = 1
 """
 params = {"c1":5.0,
      "h1":3.0,
@@ -109,13 +109,15 @@ params = {"c1":5.0,
      "m2":0.4,
      "m3":0.008}
 
+params = {"F" : 8}
+
+params = {"d" : 1}
+"""
+
 params = {"rho" : 28.0,
           "sigma" : 10,
           "beta" : 8/3}
 
-params = {"d" : 1}
-"""
-params = {"F" : 8}
 p0 = list(params.keys())[0]
 
 print(t0)
@@ -125,14 +127,24 @@ print(t0)
 # states = odeint(RosenzweigMacArthur,t0,t,args=(params,))
 # states = odeint(Sprott,t0,t)
 # states = odeint(LorenzP,t0,t, args=(0.5,))
+
+def plotData(X):
+    ax2.clear()
+    ax2.plot(X[:,0],X[:,1],X[:,2], alpha = 1, c="black")
+    # ax2.plot(s[:-2*embst,0], s[1*embst:-1*embst,0], s[2*embst:,0], alpha=1, c="black")
+    ax2._axis3don = True
+    ax2.set_facecolor("white")
+
 def makeData():
-    return odeint(Lorenz96P,t0,t, args=tuple(params.values()))
+    return odeint(LorenzP, t0, t, args=tuple(params.values()))
+    # return odeint(Lorenz96P,t0,t, args=tuple(params.values()))
 states = makeData()
+
 # END STATIONARY SIMULATIONS
 
 # FROM DATA
 """
-file = "paramecium_didinium - cleaned.csv"
+file = "GPDD.csv"
 data = pd.read_csv(file,encoding="utf-8",na_filter=False)
 states = data.to_numpy()
 print(states)
@@ -154,8 +166,8 @@ for i in range(1, tlen ):
     # print(largs(i))
     states[i] = odeint(SprottP,states[i-1],np.array([t[i-1],t[i]]),args=largs(i))[1,:]
 Xr = standardize(states[settlingTime:])
-"""
-"""
+
+
 p1 = 0.2
 p2 = 0.2
 p3 = 5.7
@@ -173,30 +185,31 @@ for i in range(1, tlen ):
 states = (states - states.mean(0)) / states.std(0) # normalize
 testTrainSplit = int(states.shape[0] * trainToTest)
 
-X = states[:-1,]
-Y = states[1:,]
+X = states
+# X = np.log(states[:,2,None]+1)
+# Y = np.log(states[1:,])
 
 # Print Input
 fig2 = plt.figure(2)
 ax2 = fig2.gca(projection="3d")
 ax2._axis3don = True
 ax2.set_facecolor("white")
-"""
+
 if dim == 2:
     ax2 = plt.subplot()
     ax2.plot(X[:,0],X[:,1])
 else:
-    # ax2.plot(X[:,0],X[:,1],X[:,2], alpha = 1, c="white")
-    ax2.plot(X[:-2*embst,0],X[1*embst:-1*embst,0],X[2*embst:,0], alpha = 1, c="black")
-"""
-ax2.plot(X[:,0], X[:,1], X[:,2])
+    plotData(states)
+    #ax2.plot(X[:-2*embst,0],X[1*embst:-1*embst,0],X[2*embst:,0], alpha = 1, c="black")
+    
+# ax2.plot(X[:,0], X[:,1], X[:,2])
 # ax2.plot(X[:-2*embst,0],X[1*embst:-1*embst,0],X[2*embst:,0], alpha = 1, c="black")
 
 
 # user interaction stuff
 fig3 = plt.figure(3)
 sliderAx = plt.axes()
-slider = Slider(sliderAx, "Slider", 0, 20, valinit=list(params.values())[0], valstep=0.1)
+slider = Slider(sliderAx, "Slider", 0, 5, valinit=list(params.values())[0], valstep=0.1)
 
 fig4 = plt.figure(4)
 paramAx = plt.axes()
@@ -217,12 +230,8 @@ def update(val):
     # s = odeint(SprottP,t0,t, args=(p1,))
 
     s = makeData()
-    # s = odeint(LorenzP,t0,t,args=(params,))
-    ax2.clear()
+    plotData(s)
     # ax2.plot(s[:,0], s[:,1], s[:,2], alpha=0.5)
-    ax2.plot(s[:-2*embst,0], s[1*embst:-1*embst,0], s[2*embst:,0], alpha=1, c="black")
-    ax2._axis3don = True
-    ax2.set_facecolor("white")
 
     # Quiver Update
     mi = np.nanmin(s,axis=0)
