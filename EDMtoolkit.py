@@ -1,18 +1,31 @@
 import numpy as np
+import math
 import numpy.linalg as la
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+epsilon = 2e-10
+
 def standardize(x):
     return (x - np.mean(x, axis=0)) / np.std(x, axis=0)
 
 def nearestNeighbors(s0, S, n):
-    orderedNeighbors = np.argsort(la.norm(s0 - S[:-1],axis=1))
+    orderedNeighbors = np.argsort(la.norm(s0 - S[:-1],axis=1))    
     return orderedNeighbors[1:n+1]
 
 # create a delay embeddding vector from a given UNIVARIATE time series.
-def delayEmbed(D, predHorizon, nLags, embInterval, t = None):
+def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=False):
+    # Remove NAs before embedding
+    if removeNAs:
+        notNA = np.all(~np.isnan(Dr),axis=1)
+
+        D = Dr[notNA]
+        if t is not None:
+            t = t[notNA]
+    else:
+        D = Dr
+    
     totalRows = D.shape[0] + predHorizon + embInterval * nLags
     A = np.zeros((totalRows, 2 + nLags))
     
@@ -40,17 +53,40 @@ def delayEmbed(D, predHorizon, nLags, embInterval, t = None):
 # calculate dominant finite time lyapunov exponent of a system
 def lyapunovExp(S):
     Lexp = 0
-    n = S.shape[0]-1
-    for i in range(n):
+    n = 0 # S.shape[0]-1
+    for i in range(S.shape[0]-1):
+
+        # make sure this element is not null
+        if arrayContainsNull(S[i]):
+            continue
+
+        # get neighbors
         nearNeighborsIndices = nearestNeighbors(S[i], S, 1)
         for nni in nearNeighborsIndices:
-            fprime = la.norm(S[i+1] - S[nni+1]) / la.norm(S[i] - S[nni])
+            # Make sure the next elements aren't null either
+            if arrayContainsNull(S[i+1]) or arrayContainsNull(S[nni+1]):
+                continue
+            n += 1
+            
+            d = la.norm(S[i] - S[nni])
+            dp = la.norm(S[i+1] - S[nni+1])
+            
+            d = max(d, epsilon)
+            dp = max(dp, epsilon)
+            
+            fprime = dp / d
+            if math.isnan(fprime):
+                print("Sowind again: ", S[i], S[nni], d, dp)
+                pass
             Lexp += np.log(fprime) # / la.norm(S[i] - S[nni])
     return Lexp / n # geometric mean - seems like lyapunov right?
 
 
+def arrayContainsNull(A):
+    return ~np.all(~np.isnan(A))
+
 # False Nearest Neighbors Plot
-def FNNplot(Xr, l, st):
+def FNNplot(Xr, l=10, st=3):
     dim = Xr.shape[1]
     # figFNN, axFNN = plt.subplots(2 * c,figsize=(16, 3*(2*c)))
     figFNN, axFNN = plt.subplots(dim, figsize=(6, 3*dim))
@@ -65,12 +101,12 @@ def FNNplot(Xr, l, st):
                 # Y, _ = delayEmbed(Xr[::c], Xr[::c], [i]*dim,s)
                 # Y, _ = delayEmbedUnitary(Xr[::c], Xr[::c], i,s)
                 lyapExps[i] = lyapunovExp(Y)
-
+            # print(lyapExps)
             if dim == 1:
                 axFNN.plot(range(l+1), lyapExps, label="{e}".format(e=s))
             else:
                 axFNN[d].plot(range(l+1), lyapExps, label="{e}".format(e=s))
-
+        
         if dim == 1:
             axFNN.legend()
             axFNN.set_xlabel("Embedding Dimension")
