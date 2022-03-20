@@ -4,6 +4,7 @@ import numpy.linalg as la
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from scipy import stats
 
 epsilon = 2e-10
 
@@ -13,6 +14,16 @@ def standardize(x):
 def nearestNeighbors(s0, S, n):
     orderedNeighbors = np.argsort(la.norm(s0 - S[:-1],axis=1))    
     return orderedNeighbors[1:n+1]
+
+def removeNANs(TS, t=None):
+    notNA = np.all(~np.isnan(TS),axis=1)
+
+    D = TS[notNA]
+    if t is not None:
+        t = t[notNA]
+        return (D, t)
+
+    return D
 
 # create a delay embeddding vector from a given UNIVARIATE time series.
 def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=False):
@@ -47,7 +58,7 @@ def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=False):
     else:
         ty = t[predHorizon : predHorizon - rowsLost]
         tx = t[:-rowsLost]
-        return (B[:,1:], B[:,0, None], tx, ty)
+        return (B[:,1:], B[:,0, None], tx)
 
 # Lyapunov Edition
 # calculate dominant finite time lyapunov exponent of a system
@@ -103,9 +114,9 @@ def FNNplot(Xr, l=10, st=3):
                 lyapExps[i] = lyapunovExp(Y)
             # print(lyapExps)
             if dim == 1:
-                axFNN.plot(range(l+1), lyapExps, label="{e}".format(e=s))
+                axFNN.plot(range(1,l+2), lyapExps, label="{e}".format(e=s))
             else:
-                axFNN[d].plot(range(l+1), lyapExps, label="{e}".format(e=s))
+                axFNN[d].plot(range(1,l+2), lyapExps, label="{e}".format(e=s))
         
         if dim == 1:
             axFNN.legend()
@@ -176,11 +187,11 @@ def getHat(M, W, x):
     """
     return hat
 
-def poincare3d(timeseries):
-    eeee, yyyy = delayEmbed(timeseries, 0, 3, 1)
+def poincare3d(timeseries, step=1):
+    eeee, yyyy = delayEmbed(timeseries, 0, 3, step)
     figPP = plt.figure()
     axPP = figPP.gca(projection="3d")
-    axPP.plot(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
+    axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
     axPP.set_xlabel("x(t)")
     axPP.set_ylabel("x(t+1)")
     axPP.set_zlabel("x(t+2)")
@@ -188,15 +199,15 @@ def poincare3d(timeseries):
     
 def poincare2d(timeseries):
     figTT, axTT = plt.subplots(1)
-    axTT.plot(timeseries[:-1], timeseries[1:])
+    axTT.scatter(timeseries[:-1], timeseries[1:])
     axTT.set_xlabel("x(t)")
     axTT.set_ylabel("x(t+1)")
     plt.show()
     
-def poincareT(timeseries):
+def poincareT(timeseries,step=1):
     figPP = plt.figure()
     axPP = figPP.gca(projection="3d")
-    axPP.scatter(timeseries[:-1],timeseries[1:],np.linspace(0,1,timeseries.shape[0]-1),linewidth=1)
+    axPP.scatter(timeseries[:-step],timeseries[step:],np.linspace(0,1,timeseries.shape[0]-step),linewidth=1)
     axPP.set_xlabel("x(t)")
     axPP.set_ylabel("x(t+1)")
     axPP.set_zlabel("t")
@@ -215,7 +226,7 @@ def peakToPeakInterval(X, t, a,b,c):
     return t[imax1] - t[imax0]
 
 
-def likelihoodRatioTest(X, Y, tx, ty, thetaBestS, thetaBest, deltaBest, errThetaDelta):
+def likelihoodRatioTest(X, Y, tx, thetaBestS, thetaBest, deltaBest, errThetaDelta):
     nTrials = int(X.shape[0] / 4)
     
     dofS = dofestimation(X, Y, tx, thetaBestS, 0)
@@ -223,6 +234,9 @@ def likelihoodRatioTest(X, Y, tx, ty, thetaBestS, thetaBest, deltaBest, errTheta
     dof = abs(dofS - dofG)
     
     teststat = X.shape[0] * np.log(np.min(errThetaDelta[:,0]) / np.min(errThetaDelta))
+
+    print("Probabiliy of SMap superiority : ",chisig(teststat, dof))
+    print(f"LambdaLR = ",teststat," dof = ", dof)
     
     return (teststat, dof)
     
@@ -231,13 +245,14 @@ def likelihoodRatioTest(X, Y, tx, ty, thetaBestS, thetaBest, deltaBest, errTheta
     
     # return (errS / varS) - (errG / varG)
 
+"""
 def likelihoodRatioTest(err1, err2, dof, N):
     lambdaLR = N * np.log(err1 / err2)
     
     if dof == 0:
         return 1
     return 1 - stats.chi2.cdf(lambdaLR,dof)
-    
+"""
 # WRONG, NEED TO USE APPROPRIATE HAT MATRIX, WHICH IS MADE OF 
 def dofestimation(X, Y, tx, theta, delta):
     dofest = 0
@@ -246,7 +261,7 @@ def dofestimation(X, Y, tx, theta, delta):
         dofest += hatvector[0,i]
     return dofest
         
-def chisig(test_stat, dof):
+def chisig(lambdaLR, dof):
     if dof == 0:
         return 1
     return 1 - stats.chi2.cdf(lambdaLR,dof)
@@ -386,8 +401,59 @@ def plotOptimization(thetas, deltas, errNSMap):
     ax2.set_yticks(np.arange(thetas.shape[0]))
     ax2.set_yticklabels(list(np.round(thetas,2)))
     ax2.set_ylabel("Theta")
-    ax2.set_title("GMap Error Results")
+    ax2.set_title("NSMap Error Results")
     plt.show()
 
-    print(f"Min SMap Error: {np.min(errNSMap[:,0])}, Min GMap Error: {np.min(errNSMap)}")
-    print(f"Improvement of GMap: {np.min(errNSMap[:,0])/np.min(errNSMap)}")
+    print(f"Min SMap Error: {np.min(errNSMap[:,0])}, Min NSMap Error: {np.min(errNSMap)}")
+    print(f"Improvement of NSMap: {np.min(errNSMap[:,0])/np.min(errNSMap)}")
+
+def functionSurfaceSMap(Xr, predHorizon, theta, resolution):
+    X, Y = delayEmbed(Xr, predHorizon, 1, 1, removeNAs=True)  
+    U = np.max(Y)
+    L = np.min(Y)
+    
+    # Create Function Surface
+    r = np.linspace(L, U, num=resolution)
+    A, B = np.meshgrid(r, r)
+    N = np.zeros(resolution)
+    C = np.zeros((resolution,resolution))
+    for i in range(resolution):
+        for j in range(resolution):
+            x = np.array([A[i,j], B[i,j]])
+            C[i,j] = GMap(X, Y, np.linspace(0,1, X.shape[0]), x, 0, theta, 0)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    ax.plot_surface(A, B, C)
+    ax.set_xlabel("x(t)")
+    ax.set_ylabel("x(t-1)")
+    ax.set_zlabel("NSMap(x(t),x(t-1))")
+    ax.scatter(X[:,0], X[:,1], Y)
+    
+    plt.show()
+
+def functionSurfaceNSMap(Xr, predHorizon, theta, delta, resolution):
+    X, Y = delayEmbed(Xr, predHorizon, 0, 1, removeNAs=True)
+    U = np.max(Y)
+    L = np.min(Y)
+    
+    # Create Function Surface
+    r = np.linspace(L, U, num=resolution)
+    T = np.linspace(0,1,num=resolution)
+    A, B = np.meshgrid(r,T)
+    C = np.zeros((resolution,resolution))
+    for i in range(resolution):
+        for j in range(resolution):
+            C[i,j] = GMap(X, Y, np.linspace(0,1, X.shape[0]), A[i,j], B[i,j], theta, delta)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    ax.plot_surface(A, B, C)
+    ax.set_xlabel("x(t)")
+    ax.set_ylabel("t")
+    ax.set_zlabel("NSMap(x(t),t)")
+    ax.scatter(X, np.linspace(0,1, X.shape[0]), Y)
+
+    ax.axes.set_zlim3d(bottom=np.min(Xr),top=np.max(Xr))
+
+    plt.show()

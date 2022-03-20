@@ -2,6 +2,9 @@ import numpy as np
 import numpy.linalg as la
 from scipy.integrate import odeint
 
+def Logistic(x, t, r):
+    return r(t) * x * (1-x)
+
 ## Models ##
 def RosenzweigMacArthurP(x, t, h2):
     c1 = 5.0
@@ -76,6 +79,41 @@ def Rossler(xi, t):
 
     return np.array( [dx,dy,dz] )
 
+def HastingsPowell(xi,t):
+    (x,y,z)=xi
+
+
+    a1 = 5
+    a2 = 0.1
+    b1 = 3
+    b2 = 2
+    d1 = 0.4
+    d2 = 0.01
+
+    dx = x*(1-x)- a1*x*y/(1+b1*x)
+    dy = a1*x*y/(1 + b1*x) - d1*y - a2*y*z/(1 + b2*y)
+    dz = a2*y*z/(1 + b2*y) - d2*z
+
+    return dx, dy, dz
+
+def HastingsPowellP(xi, t, ):
+    (x,y,z)=xi
+
+
+    a1 = 5
+    a2 = 0.1
+    b1 = 3
+    b2 = 2
+    d1 = 0.4
+    d2 = 0.01
+
+    dx = x*(1-x)- a1*x*y/(1+b1*x)
+    dy = a1*x*y/(1 + b1*x) - d1*y - a2*y*z/(1 + b2*y)
+    dz = a2*y*z/(1 + b2*y) - d2*z
+
+    return dx, dy, dz
+    
+
 """
 def test(f):
     print(f)
@@ -84,16 +122,23 @@ def test(f):
 
 # just one function that should take care of all my integrating needs
 def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingTime=0, nsargs=None):
-    t = np.linspace(0,end,num=tlen)
+    t = np.linspace(0,end,num=tlen+settlingTime)
     
     F = globals()[f]
 
     if nsargs == None:
-        ts = odeint(F, t0, t)[settlingTime::reduction,:,None]
+        ts = odeint(F, t0, t)[settlingTime::reduction]
     else:
-        ts = odeint(F, t0, t, args=nsargs)[settlingTime::reduction,:,None]
+        ts = odeint(F, t0, t, args=nsargs)[settlingTime::reduction]
 
     return ts
 
+def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None):
+    ts = np.zeros((tlen+settlingTime,1))
+    ts[0]=t0
 
+    for i in range(1,tlen+settlingTime):
+        ts[i] = f(ts[i-1], i, *nsargs)
+
+    return ts[settlingTime:]
 
