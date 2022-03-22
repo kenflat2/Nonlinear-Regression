@@ -204,13 +204,15 @@ def poincare2d(timeseries):
     axTT.set_ylabel("x(t+1)")
     plt.show()
     
-def poincareT(timeseries,step=1):
+def poincareT(timeseries,step=1,xlabel="x(t)",zlabel="x(t+1)"):
+    time = np.linspace(0,1,timeseries.shape[0]-step)
+    
     figPP = plt.figure()
     axPP = figPP.gca(projection="3d")
-    axPP.scatter(timeseries[:-step],timeseries[step:],np.linspace(0,1,timeseries.shape[0]-step),linewidth=1)
-    axPP.set_xlabel("x(t)")
-    axPP.set_ylabel("x(t+1)")
-    axPP.set_zlabel("t")
+    axPP.scatter(timeseries[:-step], time, timeseries[step:],linewidth=1)
+    axPP.set_xlabel(xlabel)
+    axPP.set_ylabel("t")
+    axPP.set_zlabel(zlabel)
     plt.show()
 
 def plotTS(timeseries):
@@ -240,8 +242,8 @@ def likelihoodRatioTest(X, Y, tx, thetaBestS, thetaBest, deltaBest, errThetaDelt
     
     return (teststat, dof)
     
-    # errS, varS = GMapMinError(X, t, predHorizon, thetaVals, np.array([0]), nTrials)
-    # errG, varG = GMapMinError(X, t, predHorizon, thetaVals, deltaVals, nTrials)
+    # errS, varS = NSMapMinError(X, t, predHorizon, thetaVals, np.array([0]), nTrials)
+    # errG, varG = NSMapMinError(X, t, predHorizon, thetaVals, deltaVals, nTrials)
     
     # return (errS / varS) - (errG / varG)
 
@@ -257,7 +259,7 @@ def likelihoodRatioTest(err1, err2, dof, N):
 def dofestimation(X, Y, tx, theta, delta):
     dofest = 0
     for i in range(X.shape[0]):
-        pred, hatvector = GMap(X, Y, tx, X[i], tx[i], theta, delta, return_hat=True)
+        pred, hatvector = NSMap(X, Y, tx, X[i], tx[i], theta, delta, return_hat=True)
         dofest += hatvector[0,i]
     return dofest
         
@@ -285,18 +287,18 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
         tXjtr = np.delete(tx, i, axis=0)
         
         if get_hat:
-            prediction, hat_vector = GMap(X, Y, tx, Xjts, tXjts, theta, delta, return_hat=True)
+            prediction, hat_vector = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=True)
             if i < X.shape[0]-1:
                 hat[i,:] = hat_vector
         else:
-            # prediction = GMap(X, Y, T, x, t, theta, delta, return_hat=False)
+            # prediction = NSMap(X, Y, T, x, t, theta, delta, return_hat=False)
             
             if delta == 0:
-                # prediction = GMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
+                # prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
                 prediction = SMap(Xjtr, Yjtr, Xjts, theta)
                 # assert prediction1 == prediction
             else:
-                prediction = GMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
+                prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
         
         timestepPredictions[i] = prediction
             
@@ -319,15 +321,16 @@ def SMap(X, Y, x, theta):
     # H = la.inv(np.transpose(X) @ np.diag(W) @ X) @ np.transpose(X) @ np.diag(W) @ Y
     # return x @ H
 
-def GMap(X, Y, T, x, t, theta, delta, return_hat=False):
+def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
     norms = la.norm(X - x,axis=1)
     d = np.mean(norms) + delta
     
-    tr = t / np.ptp(T)
-    Tr = T / np.ptp(T)
+    tr = (t - np.min(T)) / np.ptp(T)
+    Tr = (T - np.min(T)) / np.ptp(T)
     
-    weights = np.exp(-1*(theta*norms + delta*abs(Tr-tr))/d)
+    # weights = np.exp(-1*(theta*norms + delta*abs(Tr-tr))/d)
+    weights = np.power(1-delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
     # W = np.diag(np.sqrt(weights))
     W = np.diag(weights)
     # weights = np.reshape(weights,(weights.shape[0],1))
@@ -352,7 +355,42 @@ def GMap(X, Y, T, x, t, theta, delta, return_hat=False):
     else:
         return prediction
 
-def GMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
+"""
+def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
+    # create weights
+    norms = la.norm(X - x,axis=1)
+    d = np.mean(norms)
+    
+    tr = t / np.ptp(T)
+    Tr = T / np.ptp(T)
+    
+    weights = np.exp(-1*theta*norms/d - delta*abs(Tr-tr))
+    # W = np.diag(np.sqrt(weights))
+    W = np.diag(weights)
+    # weights = np.reshape(weights,(weights.shape[0],1))
+    
+    Tr = Tr.reshape((T.shape[0],1))
+    
+    if (delta > 0):
+        M = np.hstack([np.ones(Tr.shape), X, Tr])
+        xaug = np.hstack([1, x, tr])
+    else:
+        M = np.hstack([np.ones(Tr.shape), X])
+        xaug = np.hstack([1, x])
+    xaug = np.reshape(xaug, (1,xaug.shape[0]))
+    
+    # hat = xaug @ la.pinv((W@M).T @ (W@M)) @ (W@M).T @ W
+    # hat = xaug @ la.pinv((W@M).T) @ Y
+    hat = getHat(M, W, xaug)
+    prediction = hat @ Y
+    
+    if return_hat:
+        return (prediction, hat)
+    else:
+        return prediction
+"""
+
+def NSMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
     errThetaDelta = np.ones((thetaVals.shape[0], deltaVals.shape[0]))
 
     lowestError = float('inf')
@@ -372,7 +410,7 @@ def GMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
             else:
                 timestepPredictions = leaveOneOut(X, Y, tx, theta, delta)
             
-            totalError = np.sum((timestepPredictions - Y)**2)
+            totalError = np.sum(abs(timestepPredictions - Y))
             if totalError < lowestError:
                 lowestError = totalError
                 deltaBest = delta
@@ -380,7 +418,7 @@ def GMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
                 lowestVariance = np.var(timestepPredictions)
             
             errThetaDelta[thetaexp, deltaexp] = totalError
-            # print(f"Theta = {theta} Delta = {delta} Error = {errThetaDeltaGMap[thetaexp, deltaexp]}")
+            # print(f"Theta = {theta} Delta = {delta} Error = {errThetaDeltaNSMap[thetaexp, deltaexp]}")
 
     plotOptimization(thetaVals, deltaVals, errThetaDelta)
     
@@ -420,11 +458,11 @@ def functionSurfaceSMap(Xr, predHorizon, theta, resolution):
     for i in range(resolution):
         for j in range(resolution):
             x = np.array([A[i,j], B[i,j]])
-            C[i,j] = GMap(X, Y, np.linspace(0,1, X.shape[0]), x, 0, theta, 0)
+            C[i,j] = NSMap(X, Y, np.linspace(0,1, X.shape[0]), x, 0, theta, 0)
 
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
-    ax.plot_surface(A, B, C)
+    ax.plot_wireframe(A, B, C,color="silver")
     ax.set_xlabel("x(t)")
     ax.set_ylabel("x(t-1)")
     ax.set_zlabel("NSMap(x(t),x(t-1))")
@@ -444,11 +482,11 @@ def functionSurfaceNSMap(Xr, predHorizon, theta, delta, resolution):
     C = np.zeros((resolution,resolution))
     for i in range(resolution):
         for j in range(resolution):
-            C[i,j] = GMap(X, Y, np.linspace(0,1, X.shape[0]), A[i,j], B[i,j], theta, delta)
+            C[i,j] = NSMap(X, Y, np.linspace(0,1, X.shape[0]), A[i,j], B[i,j], theta, delta)
 
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
-    ax.plot_surface(A, B, C)
+    ax.plot_wireframe(A, B, C, color="green")
     ax.set_xlabel("x(t)")
     ax.set_ylabel("t")
     ax.set_zlabel("NSMap(x(t),t)")
