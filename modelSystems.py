@@ -25,6 +25,22 @@ def Logistic(x, t):
 def LogisticP(x, t, r):
     return r(t) * x * (1-x)
 
+def LogisticIslandsP(x, t, r, m):
+    I = x.shape[0]
+    xr = x.copy()
+    
+    for i in range(x):
+        ip = (i + 1) % I
+        im = (i - 1) % I
+
+        xr[i] = LogisticP(x[i]*(1-m)+(x[ip]+x[im])*m/2, t, r)
+
+    return xr
+
+def LogisticIslandsP(x, t, r):
+    return LogisticIslandsP(x, t, r, 0.5)
+    
+
 def DensityDependentMaturation(x, t):
     s = 0.02 # 
     gamma = 0.01 # rate at which growth is impeded by density
@@ -157,13 +173,13 @@ def HastingsPowell(xi,t):
 
     return dx, dy, dz
 
-def HastingsPowellP(xi, t, ):
+def HastingsPowellP(xi, t, b1):
     (x,y,z)=xi
 
 
     a1 = 5
     a2 = 0.1
-    b1 = 3
+    b1 = b1(t)
     b2 = 2
     d1 = 0.4
     d2 = 0.01
@@ -183,14 +199,24 @@ def test(f):
 
 # just one function that should take care of all my integrating needs
 def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingTime=0, nsargs=None):
-    t = np.linspace(0,end,num=tlen+settlingTime)
-    
     F = globals()[f]
 
+    if settlingTime > 0:
+        tSettle = np.arange(0,settlingTime, step=end/(reduction*tlen))
+
+        # let the system settle
+        if nsargs == None:
+            x0 = odeint(F, t0, tSettle)[-1]
+        else:
+            driverSettle = lambda t : nsargs[0](0)
+            x0 = odeint(F, t0, tSettle, args=(driverSettle,))[-1]
+                
+    t = np.linspace(0,end,num=tlen*reduction)
+    
     if nsargs == None:
-        ts = odeint(F, t0, t)[settlingTime::reduction]
+        ts = odeint(F, x0, t)[::reduction]
     else:
-        ts = odeint(F, t0, t, args=nsargs)[settlingTime::reduction]
+        ts = odeint(F, x0, t, args=nsargs)[::reduction]
 
     return ts
 

@@ -107,16 +107,16 @@ def FNNplot(Xr, l=10, st=3):
     for d in range(dim):
         lyapExps = np.zeros(l+1)
         for s in range(1, st+1, 1):
-            for i in range(l+1):
+            for i in range(1,l+2):
                 Y, _ = delayEmbed(Xr[:,d,None], 0, i, s) # individual axis version
                 # Y, _ = delayEmbed(Xr[::c], Xr[::c], [i]*dim,s)
                 # Y, _ = delayEmbedUnitary(Xr[::c], Xr[::c], i,s)
-                lyapExps[i] = lyapunovExp(Y)
+                lyapExps[i-1] = lyapunovExp(Y)
             # print(lyapExps)
             if dim == 1:
-                axFNN.plot(range(1,l+2), lyapExps, label="{e}".format(e=s))
+                axFNN.plot(range(2,l+3), lyapExps, label="{e}".format(e=s))
             else:
-                axFNN[d].plot(range(1,l+2), lyapExps, label="{e}".format(e=s))
+                axFNN[d].plot(range(2,l+3), lyapExps, label="{e}".format(e=s))
         
         if dim == 1:
             axFNN.legend()
@@ -187,7 +187,7 @@ def getHat(M, W, x):
     """
     return hat
 
-def poincare3d(timeseries, step=1):
+def poincare3d(timeseries, step=1, title=""):
     eeee, yyyy = delayEmbed(timeseries, 0, 3, step)
     figPP = plt.figure()
     axPP = figPP.gca(projection="3d")
@@ -195,6 +195,7 @@ def poincare3d(timeseries, step=1):
     axPP.set_xlabel("x(t)")
     axPP.set_ylabel("x(t+1)")
     axPP.set_zlabel("x(t+2)")
+    axPP.set_title(title)
     plt.show()
     
 def poincare2d(timeseries):
@@ -215,11 +216,12 @@ def poincareT(timeseries,step=1,xlabel="x(t)",zlabel="x(t+1)"):
     axPP.set_zlabel(zlabel)
     plt.show()
 
-def plotTS(timeseries):
+def plotTS(timeseries, title=""):
     figPP, axPP = plt.subplots(1)
     axPP.plot(timeseries)
     axPP.set_xlabel("t")
     axPP.set_ylabel("pop")
+    axPP.set_title(title)
     plt.show()
 
 def peakToPeakInterval(X, t, a,b,c):
@@ -227,7 +229,20 @@ def peakToPeakInterval(X, t, a,b,c):
     imax1 = Xr[b:c].argmax() + b
     return t[imax1] - t[imax0]
 
+def AkaikeTest(errNS, errS, dofNS, dofS, n):
+    # we assume err1 is lower
 
+    l1 = n * np.log(errS / errNS) / -2
+    p1 = np.exp(dofNS - dofS + l1)
+    
+    l2 = n * np.log(errNS / errS) / -2
+    p2 = np.exp(dofS - dofNS + l2)
+
+    if p1 < p2:
+        print("Probability SMap beats NSMap: ", p1)
+    else:
+        print("Probability NSMap beats SMap: ", p2)
+    
 def likelihoodRatioTest(X, Y, tx, thetaBestS, thetaBest, deltaBest, errThetaDelta):
     nTrials = int(X.shape[0] / 4)
     
@@ -293,12 +308,12 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
         else:
             # prediction = NSMap(X, Y, T, x, t, theta, delta, return_hat=False)
             
-            if delta == 0:
-                # prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
-                prediction = SMap(Xjtr, Yjtr, Xjts, theta)
-                # assert prediction1 == prediction
-            else:
-                prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
+            # if delta == 1:
+            #     # prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
+            #     prediction = SMap(Xjtr, Yjtr, Xjts, theta)
+            #     # assert prediction1 == prediction
+            # else:
+            prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
         
         timestepPredictions[i] = prediction
             
@@ -324,20 +339,20 @@ def SMap(X, Y, x, theta):
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
     norms = la.norm(X - x,axis=1)
-    d = np.mean(norms) + delta
+    d = np.mean(norms)
     
     tr = (t - np.min(T)) / np.ptp(T)
     Tr = (T - np.min(T)) / np.ptp(T)
     
     # weights = np.exp(-1*(theta*norms + delta*abs(Tr-tr))/d)
-    weights = np.power(1-delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
+    weights = np.power(delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
     # W = np.diag(np.sqrt(weights))
     W = np.diag(weights)
     # weights = np.reshape(weights,(weights.shape[0],1))
     
     Tr = Tr.reshape((T.shape[0],1))
     
-    if (delta > 0):
+    if (delta !=1 1):
         M = np.hstack([X, Tr])
         xaug = np.hstack([x, tr])
     else:
@@ -390,6 +405,66 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
         return prediction
 """
 
+def SMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, returnLandscape=False):
+    errorLandscape = np.ones((thetas.shape[0], maxLags+1))
+
+    for lags in range(maxLags+1):
+        X, Y, tx = delayEmbed(Xr, horizon, lags, stepsize, t=t)
+        
+        for thetaexp in range(thetas.shape[0]):
+            theta = thetas[thetaexp]
+            
+            timestepPredictions = leaveOneOut(X, Y, tx, theta, 1)
+            
+            totalError = np.sum(abs(timestepPredictions - Y))
+            
+            errorLandscape[thetaexp, lags] = totalError
+            # print(f"Theta = {theta} Delta = {delta} Error = {errThetaDeltaNSMap[thetaexp, deltaexp]}")
+
+    minError = np.amin(errorLandscape)
+    thetaI, lagBest = np.where(errorLandscape == minError)
+    # plotOptimization(thetaVals, deltaVals, errorLandscape)
+
+    thetaBest = thetas[thetaI[0]]
+    lagBest = lagBest[0]
+
+    if returnLandscape:
+        return (thetaBest, lagBest, minError, errorLandscape)
+    else: 
+        return (thetaBest, lagBest, minError)
+
+def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLandscape=False):   
+    errorLandscape = np.ones((thetas.shape[0], deltas.shape[0], maxLags+1))
+
+    for lags in range(maxLags+1):
+        X, Y, tx = delayEmbed(Xr, horizon, lags, stepsize, t=t)
+        
+        for deltaexp in range(deltas.shape[0]):
+            for thetaexp in range(thetas.shape[0]):
+                theta = thetas[thetaexp]
+                delta = deltas[deltaexp]
+                
+                timestepPredictions = leaveOneOut(X, Y, tx, theta, delta)
+                
+                totalError = np.sum(abs(timestepPredictions - Y))
+                
+                errorLandscape[thetaexp, deltaexp, lags] = totalError
+                # print(f"Theta = {theta} Delta = {delta} Error = {errThetaDeltaNSMap[thetaexp, deltaexp]}")
+
+    minError = np.amin(errorLandscape)
+    thetaI, deltaI, lagBest = np.where(errorLandscape == minError)
+    # plotOptimization(thetaVals, deltaVals, errorLandscape)
+
+    thetaBest = thetas[thetaI[0]]
+    deltaBest = deltas[deltaI[0]]
+    lagBest = lagBest[0]
+
+    if returnLandscape:
+        return (thetaBest, deltaBest, lagBest, minError, errorLandscape)
+    else: 
+        return (thetaBest, deltaBest, lagBest, minError)
+                 
+"""
 def NSMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
     errThetaDelta = np.ones((thetaVals.shape[0], deltaVals.shape[0]))
 
@@ -426,8 +501,8 @@ def NSMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
         return (thetaBest, deltaBest, errThetaDelta, hat)
     else:
         return (thetaBest, deltaBest, errThetaDelta)
-
-
+"""
+                 
 def plotOptimization(thetas, deltas, errNSMap):    
     # Theta Optimization
 
@@ -458,7 +533,7 @@ def functionSurfaceSMap(Xr, predHorizon, theta, resolution):
     for i in range(resolution):
         for j in range(resolution):
             x = np.array([A[i,j], B[i,j]])
-            C[i,j] = NSMap(X, Y, np.linspace(0,1, X.shape[0]), x, 0, theta, 0)
+            C[i,j] = NSMap(X, Y, np.linspace(0,1, X.shape[0]), x, 0, theta, 1)
 
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
