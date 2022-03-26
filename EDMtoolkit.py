@@ -187,30 +187,39 @@ def getHat(M, W, x):
     """
     return hat
 
-def poincare3d(timeseries, step=1, title=""):
+def poincare3d(timeseries, step=1, title="", scatter=True):
     eeee, yyyy = delayEmbed(timeseries, 0, 3, step)
     figPP = plt.figure()
     axPP = figPP.gca(projection="3d")
-    axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
+    if scatter:
+        axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
+    else: 
+        axPP.plot(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
     axPP.set_xlabel("x(t)")
-    axPP.set_ylabel("x(t+1)")
-    axPP.set_zlabel("x(t+2)")
+    axPP.set_ylabel(f"x(t+{step})")
+    axPP.set_zlabel(f"x(t+{2*step})")
     axPP.set_title(title)
+    axPP.set_xticks([])
+    axPP.set_yticks([])
+    axPP.set_zticks([])
     plt.show()
     
-def poincare2d(timeseries):
+def poincare2d(timeseries, step=1):
     figTT, axTT = plt.subplots(1)
-    axTT.scatter(timeseries[:-1], timeseries[1:])
+    axTT.scatter(timeseries[:-step], timeseries[step:])
     axTT.set_xlabel("x(t)")
     axTT.set_ylabel("x(t+1)")
     plt.show()
     
-def poincareT(timeseries,step=1,xlabel="x(t)",zlabel="x(t+1)"):
+def poincareT(timeseries,step=1,xlabel="x(t)",zlabel="x(t+tau)", scatter=True):
     time = np.linspace(0,1,timeseries.shape[0]-step)
     
     figPP = plt.figure()
     axPP = figPP.gca(projection="3d")
-    axPP.scatter(timeseries[:-step], time, timeseries[step:],linewidth=1)
+    if scatter:
+        axPP.scatter(timeseries[:-step], time, timeseries[step:],linewidth=1)
+    else:
+        axPP.plot(timeseries[:-step,0], time, timeseries[step:,0],linewidth=1)
     axPP.set_xlabel(xlabel)
     axPP.set_ylabel("t")
     axPP.set_zlabel(zlabel)
@@ -345,14 +354,14 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     Tr = (T - np.min(T)) / np.ptp(T)
     
     # weights = np.exp(-1*(theta*norms + delta*abs(Tr-tr))/d)
-    weights = np.power(delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
+    weights = np.power(1-delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
     # W = np.diag(np.sqrt(weights))
     W = np.diag(weights)
     # weights = np.reshape(weights,(weights.shape[0],1))
     
     Tr = Tr.reshape((T.shape[0],1))
     
-    if (delta !=1 1):
+    if (delta > 0):
         M = np.hstack([X, Tr])
         xaug = np.hstack([x, tr])
     else:
@@ -414,7 +423,7 @@ def SMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, returnLandscape=Fals
         for thetaexp in range(thetas.shape[0]):
             theta = thetas[thetaexp]
             
-            timestepPredictions = leaveOneOut(X, Y, tx, theta, 1)
+            timestepPredictions = leaveOneOut(X, Y, tx, theta, 0)
             
             totalError = np.sum(abs(timestepPredictions - Y))
             
@@ -533,7 +542,7 @@ def functionSurfaceSMap(Xr, predHorizon, theta, resolution):
     for i in range(resolution):
         for j in range(resolution):
             x = np.array([A[i,j], B[i,j]])
-            C[i,j] = NSMap(X, Y, np.linspace(0,1, X.shape[0]), x, 0, theta, 1)
+            C[i,j] = NSMap(X, Y, np.linspace(0,1, X.shape[0]), x, 0, theta, 0)
 
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")

@@ -29,17 +29,19 @@ def LogisticIslandsP(x, t, r, m):
     I = x.shape[0]
     xr = x.copy()
     
-    for i in range(x):
+    for i in range(I):
         ip = (i + 1) % I
         im = (i - 1) % I
 
-        xr[i] = LogisticP(x[i]*(1-m)+(x[ip]+x[im])*m/2, t, r)
+        xr[i] = LogisticP(x[i]*(1-m(t))+(x[ip]+x[im])*m(t)/2, t, r)
 
     return xr
 
-def LogisticIslandsP(x, t, r):
-    return LogisticIslandsP(x, t, r, 0.5)
+def LogisticIslands(x, t):
+    r = lambda t : 4
+    m = lambda t : 0.5
     
+    return LogisticIslandsP(x, t, r, m)
 
 def DensityDependentMaturation(x, t):
     s = 0.02 # 
@@ -210,6 +212,8 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
         else:
             driverSettle = lambda t : nsargs[0](0)
             x0 = odeint(F, t0, tSettle, args=(driverSettle,))[-1]
+    else:
+        x0 = t0
                 
     t = np.linspace(0,end,num=tlen*reduction)
     
@@ -221,6 +225,8 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
     return ts
 
 def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None):
+    F = globals()[f]
+    
     if type(t0) == float:
         ts = np.zeros((tlen,1))
     else:
@@ -231,17 +237,17 @@ def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None):
     # allow system to settle
     for i in range(settlingTime):
         if nsargs==None:
-            ts[0] = f(ts[0], 0)
+            ts[0] = F(ts[0], 0)
         else:
-            ts[0] = f(ts[0], 0, *nsargs)
+            ts[0] = F(ts[0], 0, *nsargs)
 
     # now evaluate
     if nsargs==None:
         for i in range(1,tlen):
-            ts[i] = f(ts[i-1], i)
+            ts[i] = F(ts[i-1], i)
     else:
         for i in range(1,tlen):
-            ts[i] = f(ts[i-1], i, *nsargs)
+            ts[i] = F(ts[i-1], i, *nsargs)
 
     return ts
 
