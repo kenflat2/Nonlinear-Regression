@@ -322,7 +322,10 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
             #     prediction = SMap(Xjtr, Yjtr, Xjts, theta)
             #     # assert prediction1 == prediction
             # else:
-            prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
+            if delta == 0:
+                prediction = SMap(Xjtr, Yjtr, Xjts, theta)
+            else:
+                prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
         
         timestepPredictions[i] = prediction
             
@@ -414,20 +417,21 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
         return prediction
 """
 
-def SMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, returnLandscape=False):
-    errorLandscape = np.ones((thetas.shape[0], maxLags+1))
+def SMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, returnLandscape=False, minLags=0):
+    errorLandscape = np.ones((thetas.shape[0], maxLags+1-minLags))
 
-    for lags in range(maxLags+1):
+    for lags in range(minLags,maxLags+1):
         X, Y, tx = delayEmbed(Xr, horizon, lags, stepsize, t=t)
         
         for thetaexp in range(thetas.shape[0]):
             theta = thetas[thetaexp]
+            print(f"({theta},{lags+2})")
             
             timestepPredictions = leaveOneOut(X, Y, tx, theta, 0)
             
             totalError = np.sum(abs(timestepPredictions - Y))
             
-            errorLandscape[thetaexp, lags] = totalError
+            errorLandscape[thetaexp, lags-minLags] = totalError
             # print(f"Theta = {theta} Delta = {delta} Error = {errThetaDeltaNSMap[thetaexp, deltaexp]}")
 
     minError = np.amin(errorLandscape)
@@ -435,29 +439,30 @@ def SMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, returnLandscape=Fals
     # plotOptimization(thetaVals, deltaVals, errorLandscape)
 
     thetaBest = thetas[thetaI[0]]
-    lagBest = lagBest[0]
+    lagBest = lagBest[0]+lagMin
 
     if returnLandscape:
         return (thetaBest, lagBest, minError, errorLandscape)
     else: 
         return (thetaBest, lagBest, minError)
 
-def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLandscape=False):   
-    errorLandscape = np.ones((thetas.shape[0], deltas.shape[0], maxLags+1))
+def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLandscape=False, minLags=0):   
+    errorLandscape = np.ones((thetas.shape[0], deltas.shape[0], maxLags+1-minLags))
 
-    for lags in range(maxLags+1):
+    for lags in range(minLags,maxLags+1):
         X, Y, tx = delayEmbed(Xr, horizon, lags, stepsize, t=t)
         
         for deltaexp in range(deltas.shape[0]):
             for thetaexp in range(thetas.shape[0]):
                 theta = thetas[thetaexp]
                 delta = deltas[deltaexp]
+                print(f"({theta},{delta},{lags+2})")
                 
                 timestepPredictions = leaveOneOut(X, Y, tx, theta, delta)
                 
                 totalError = np.sum(abs(timestepPredictions - Y))
                 
-                errorLandscape[thetaexp, deltaexp, lags] = totalError
+                errorLandscape[thetaexp, deltaexp, lags-minLags] = totalError
                 # print(f"Theta = {theta} Delta = {delta} Error = {errThetaDeltaNSMap[thetaexp, deltaexp]}")
 
     minError = np.amin(errorLandscape)
@@ -466,12 +471,142 @@ def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLands
 
     thetaBest = thetas[thetaI[0]]
     deltaBest = deltas[deltaI[0]]
-    lagBest = lagBest[0]
+    lagBest = lagBest[0]+lagMin
 
     if returnLandscape:
         return (thetaBest, deltaBest, lagBest, minError, errorLandscape)
     else: 
         return (thetaBest, deltaBest, lagBest, minError)
+
+def sigmoid(x):
+    return 1/(1+np.exp(-x))
+
+def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, deltaInit=0):
+
+    tableNS = np.zeros((maxLags, 3))
+    tableS = np.zeros((maxLags, 2))
+
+    # for each number of lags from 0 to maxLags
+    for l in range(maxLags):
+        X, Y, tx = delayEmbed(Xr, horizon, l, lagStepsize, t=t)
+
+        #   run optimization for NSMap and NSMap
+
+        thetaNS, deltaNS, errNS = NSMapOptimizeG(X, Y, tx, errFunc, thetaInit=thetaInit, deltaInit=deltaInit)
+        thetaS, errS = SMapOptimizeG(X, Y, tx, errFunc)
+
+        tableNS[l, 0] = errNS
+        tableNS[l, 1] = thetaNS
+        tableNS[l, 2] = deltaNS
+        
+        tableS[l, 0] = errS
+        tableS[l, 1] = thetaS
+
+    iNS = np.argsort(tableNS[:,0])[0]
+    iS = np.argsort(tableS[:,0])[0]
+        
+    # return best hyperparameters and minimum error for each
+
+    print(f"NSMap: \n Min error {tableNS[iNS, 0]} \n Optimal Lags: {iNS+1} \n Theta: {tableNS[iNS, 1]} \n Delta: {tableNS[iNS, 2]}")
+    print(f"SMap: \n Min error {tableS[iNS, 0]} \n Optimal Lags: {iS+1} \n Theta: {tableS[iNS, 1]}")
+    
+    # (thetaNS, deltaNS, errNS, lagsNS, thetaS, errS, lagsS)
+    return (tableNS[iNS, 1], tableNS[iNS, 2], tableNS[iNS, 0], iNS, tableS[iS,1], tableS[iS,0], iS)
+
+
+# numerically evaluates gradient
+def gradient(X, Y, tx, theta, delta, errFunc=leaveOneOut):
+    # this is the gap used to evaluate the gradient
+    D = 0.01
+    
+    ddelta = max(min(D, (1-delta)/2), 10e-5)
+    dtheta = D
+
+    predictions = errFunc(X, Y, tx, theta, delta)
+    E = np.sum((predictions-Y)**2)
+    
+    predictionst= errFunc(X, Y, tx, theta + dtheta, delta)
+    Et = np.sum((predictionst-Y)**2)
+    
+    predictionsd = errFunc(X, Y, tx, theta, delta + ddelta)
+    Ed = np.sum((predictionsd-Y)**2)
+
+    # print(E, Et,Ed)
+
+    grad = ((E-Et)/dtheta, (E-Ed)/ddelta)
+
+    return (grad, E)
+    
+# Optimize NSMap using GRADIENT DESCENT instead of evaluating a grid
+def SMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0):
+
+    err = 0
+    count = 0
+
+    rhoplus = 1.1 # if the sign of the gradient doesn't change, must be > 1
+    rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
+    
+    hp = np.array([thetaInit], dtype=float)
+    gradPrev = np.array([1], dtype=float)
+    deltaPrev = np.array([1], dtype=float)
+    
+    while la.norm(gradPrev) > 0.001 and count < trainingSteps:
+        grad, err = gradient(X, Y, t, hp[0], 0, errFunc=errFunc)
+        grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
+
+        s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
+        spos = np.ceil(s) # 0 for - vals, 1 for + vals
+        sneg = -1 * (spos - 1)
+
+        delta = np.multiply((rhoplus * spos) + (rhominus * sneg), deltaPrev)
+        dweights = np.multiply(delta, ( np.ceil(grad) - 0.5 ) * 2) # make sure signs reflect the orginal gradient
+
+        deltaPrev = delta
+        gradPrev = grad
+        count += 1
+
+        # floor and ceiling on the hyperparameters
+        hp[0] = max(0, hp[0] + dweights[0])
+
+        print(hp)
+        print(err)
+    return (hp[0], err)
+
+# Optimize NSMap using GRADIENT DESCENT instead of evaluating a grid
+def NSMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, deltaInit=0):
+
+    err = 0
+    count = 0
+
+    rhoplus = 1.1 # if the sign of the gradient doesn't change, must be > 1
+    rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
+    
+    hp = np.array([thetaInit, deltaInit], dtype=float)
+    gradPrev = np.array([1,1], dtype=float)
+    deltaPrev = np.array([1,1], dtype=float)
+    
+    while la.norm(gradPrev) > 0.001 and count < trainingSteps:
+        grad, err = gradient(X, Y, t, hp[0], hp[1], errFunc=errFunc)
+        grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
+
+        s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
+        spos = np.ceil(s) # 0 for - vals, 1 for + vals
+        sneg = -1 * (spos - 1)
+
+        delta = np.multiply((rhoplus * spos) + (rhominus * sneg), deltaPrev)
+        dweights = np.multiply(delta, ( np.ceil(grad) - 0.5 ) * 2) # make sure signs reflect the orginal gradient
+
+        deltaPrev = delta
+        gradPrev = grad
+        count += 1
+
+        # floor and ceiling on the hyperparameters
+        hp[0] = max(0, hp[0] + dweights[0])
+        hp[1] = min(1-10e-5, max(0, hp[1] + dweights[1]))
+
+        print(hp)
+        print(err)
+    return (hp[0], hp[1], err)
                  
 """
 def NSMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
