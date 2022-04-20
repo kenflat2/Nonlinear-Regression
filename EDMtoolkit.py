@@ -279,14 +279,20 @@ def likelihoodRatioTest(err1, err2, dof, N):
         return 1
     return 1 - stats.chi2.cdf(lambdaLR,dof)
 """
+
 # WRONG, NEED TO USE APPROPRIATE HAT MATRIX, WHICH IS MADE OF 
 def dofestimation(X, Y, tx, theta, delta):
+
+    #_, hat = leaveOneOut(X, Y, tx, theta, delta,get_hat=True)
+    # print(hat.shape)
+    #dofest = np.trace(hat.T @ hat)
+    
     dofest = 0
     for i in range(X.shape[0]):
         pred, hatvector = NSMap(X, Y, tx, X[i], tx[i], theta, delta, return_hat=True)
         dofest += hatvector[0,i]
     return dofest
-        
+
 def chisig(lambdaLR, dof):
     if dof == 0:
         return 1
@@ -296,7 +302,7 @@ def chisig(lambdaLR, dof):
 def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
     
     if get_hat:
-        hat = np.zeros((X.shape[0]-1, X.shape[0]-1))
+        hat = np.zeros((X.shape[0], X.shape[0]-1))
     timestepPredictions = np.zeros((X.shape[0], 1))
     
     for i in range(0, X.shape[0]):
@@ -312,8 +318,7 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
         
         if get_hat:
             prediction, hat_vector = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=True)
-            if i < X.shape[0]-1:
-                hat[i,:] = hat_vector
+            hat[i,:] = hat_vector
         else:
             # prediction = NSMap(X, Y, T, x, t, theta, delta, return_hat=False)
             
@@ -322,10 +327,10 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
             #     prediction = SMap(Xjtr, Yjtr, Xjts, theta)
             #     # assert prediction1 == prediction
             # else:
-            if delta == 0:
-                prediction = SMap(Xjtr, Yjtr, Xjts, theta)
-            else:
-                prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
+            # if delta == 0:
+            #    prediction = SMap(Xjtr, Yjtr, Xjts, theta)
+            #else:
+            prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat=False)
         
         timestepPredictions[i] = prediction
             
@@ -334,13 +339,34 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
     else:
         return timestepPredictions
 
+def sequential(X, Y, tx, theta, delta, returnSeries=False):
+    trainSize = int(X.shape[0] / 2)
+    testSize = X.shape[0] - trainSize
+    timestepPredictions = np.zeros((testSize, 1))
+    
+    for i in range(int(X.shape[0]/2), X.shape[0]):
+        # create the train and test stuff        
+        # if delta == 0:
+        #     prediction = SMap(X[:i], Y[:i], X[i], theta)
+        # else:
+        prediction = NSMap(X[:i], Y[:i], tx[:i], X[i], tx[i], theta, delta)
+        
+        timestepPredictions[i - trainSize] = prediction
+
+    error = np.sum((timestepPredictions-Y[trainSize:]) ** 2)
+
+    if returnSeries:
+        return (error, timestepPredictions)
+    else:
+        return error
+
 # make a 1 time step prediction based on a given state(nD vector)
 def SMap(X, Y, x, theta):
     norms = la.norm(X-x,axis=1)
     d = np.mean(norms) # d = np.mean(norms) # 
     
     W = np.diag(np.exp(-1 * theta * norms / d))
-    
+
     H = getHat(X, W, x)
     return H @ Y
 
@@ -348,6 +374,36 @@ def SMap(X, Y, x, theta):
     # H = la.inv(np.transpose(X) @ np.diag(W) @ X) @ np.transpose(X) @ np.diag(W) @ Y
     # return x @ H
 
+### TIME IS NOT INCLUDED AS A STATE VARIABLE ###
+"""
+def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
+    # create weights
+    norms = la.norm(X - x,axis=1)
+    d = np.mean(norms)
+    
+    tr = (t - np.min(T)) / np.ptp(T)
+    Tr = (T - np.min(T)) / np.ptp(T)
+    
+    weights = np.power(1-delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
+    W = np.diag(weights)
+    
+    Tr = Tr.reshape((T.shape[0],1))
+    
+    M = np.hstack([X, np.ones(Tr.shape)])
+    
+    xaug = np.hstack([x, 1])
+    xaug = np.reshape(xaug, (1,xaug.shape[0]))
+    
+    H = getHat(M, W, xaug)
+    prediction = H @ Y
+    
+    if return_hat:
+        return (prediction, H)
+    else:
+        return prediction
+"""
+
+### THIS VERSION INCLUDES THE MONOTONICALLY INCREASING DRIVER ###
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
     norms = la.norm(X - x,axis=1)
@@ -365,8 +421,8 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     Tr = Tr.reshape((T.shape[0],1))
     
     if (delta > 0):
-        M = np.hstack([X, Tr])
-        xaug = np.hstack([x, tr])
+        M = np.hstack([X, Tr, np.ones(Tr.shape)])
+        xaug = np.hstack([x, tr, 1])
     else:
         M = np.hstack([X, np.ones(Tr.shape)])
         xaug = np.hstack([x, 1])
@@ -491,9 +547,11 @@ def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=leaveOneOut,
         X, Y, tx = delayEmbed(Xr, horizon, l, lagStepsize, t=t)
 
         #   run optimization for NSMap and NSMap
+        hpNS = np.array([thetaInit, deltaInit],dtype=float)
+        hpS = np.array([thetaInit],dtype=float)
 
-        thetaNS, deltaNS, errNS = NSMapOptimizeG(X, Y, tx, errFunc, thetaInit=thetaInit, deltaInit=deltaInit)
-        thetaS, errS = SMapOptimizeG(X, Y, tx, errFunc)
+        thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc, hp=hpNS)
+        thetaS, errS = optimizeG(X, Y, tx, errFunc, hp=hpS)
 
         tableNS[l, 0] = errNS
         tableNS[l, 1] = thetaNS
@@ -508,7 +566,7 @@ def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=leaveOneOut,
     # return best hyperparameters and minimum error for each
 
     print(f"NSMap: \n Min error {tableNS[iNS, 0]} \n Optimal Lags: {iNS+1} \n Theta: {tableNS[iNS, 1]} \n Delta: {tableNS[iNS, 2]}")
-    print(f"SMap: \n Min error {tableS[iNS, 0]} \n Optimal Lags: {iS+1} \n Theta: {tableS[iNS, 1]}")
+    print(f"SMap: \n Min error {tableS[iS, 0]} \n Optimal Lags: {iS+1} \n Theta: {tableS[iS, 1]}")
     
     # (thetaNS, deltaNS, errNS, lagsNS, thetaS, errS, lagsS)
     return (tableNS[iNS, 1], tableNS[iNS, 2], tableNS[iNS, 0], iNS, tableS[iS,1], tableS[iS,0], iS)
@@ -536,8 +594,9 @@ def gradient(X, Y, tx, theta, delta, errFunc=leaveOneOut):
     grad = ((E-Et)/dtheta, (E-Ed)/ddelta)
 
     return (grad, E)
-    
-# Optimize NSMap using GRADIENT DESCENT instead of evaluating a grid
+
+"""
+# Optimize SMap using GRADIENT DESCENT instead of evaluating a grid
 def SMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0):
 
     err = 0
@@ -571,9 +630,9 @@ def SMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0):
         print(hp)
         print(err)
     return (hp[0], err)
-
-# Optimize NSMap using GRADIENT DESCENT instead of evaluating a grid
-def NSMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, deltaInit=0):
+"""
+# Optimize using GRADIENT DESCENT instead of evaluating a grid
+def optimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, hp=np.array([0,0],dtype=float)):
 
     err = 0
     count = 0
@@ -581,12 +640,18 @@ def NSMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, 
     rhoplus = 1.1 # if the sign of the gradient doesn't change, must be > 1
     rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
     
-    hp = np.array([thetaInit, deltaInit], dtype=float)
-    gradPrev = np.array([1,1], dtype=float)
-    deltaPrev = np.array([1,1], dtype=float)
+    gradPrev = np.ones(hp.shape, dtype=float)
+    deltaPrev = np.ones(hp.shape, dtype=float)
+    errPrev = 1
     
-    while la.norm(gradPrev) > 0.001 and count < trainingSteps:
-        grad, err = gradient(X, Y, t, hp[0], hp[1], errFunc=errFunc)
+    while abs(err-errPrev) > 0.001 and count < trainingSteps:
+        errPrev = err
+        
+        if len(hp)==1:
+            grad, err = gradient(X, Y, t, hp[0], 0, errFunc=errFunc)
+        else:
+            grad, err = gradient(X, Y, t, hp[0], hp[1], errFunc=errFunc)
+        
         grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
 
         s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
@@ -602,11 +667,16 @@ def NSMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, 
 
         # floor and ceiling on the hyperparameters
         hp[0] = max(0, hp[0] + dweights[0])
-        hp[1] = min(1-10e-5, max(0, hp[1] + dweights[1]))
+        if len(hp) == 2:
+            hp[1] = min(1-(10e-5), max(0, hp[1] + dweights[1]))
 
-        print(hp)
-        print(err)
-    return (hp[0], hp[1], err)
+        # print(hp)
+        # print(err)
+
+    if len(hp) == 1:
+        return (hp[0], err)
+    else:
+        return (hp[0], hp[1], err)
                  
 """
 def NSMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
