@@ -339,6 +339,31 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
     else:
         return timestepPredictions
 
+# leaves one input and output pair out, and use rest as training data
+def schreiberContinuous(X, Y, tx, theta, delta):
+
+    n = X.shape[0]
+    
+    error_matrix = np.zeros((n,n))
+    
+    for i in range(0, n):
+        # create the train and test stuff
+        
+        Xjts = X[i].copy()
+        Yjts = Y[i].copy()
+        tXjts = tx[i].copy()
+        
+        Xjtr = np.delete(X, i, axis=0)
+        Yjtr = np.delete(Y, i, axis=0)
+        tXjtr = np.delete(tx, i, axis=0)
+
+        for j in range(n-1):
+            prediction = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjtr[j], theta, delta, return_hat=False)
+            error_matrix[i,j] = (Yjts - prediction) ** 2
+        
+        
+    return error_matrix
+
 def sequential(X, Y, tx, theta, delta, returnSeries=False):
     trainSize = int(X.shape[0] / 2)
     testSize = X.shape[0] - trainSize
@@ -412,8 +437,8 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     tr = (t - np.min(T)) / np.ptp(T)
     Tr = (T - np.min(T)) / np.ptp(T)
     
-    # weights = np.exp(-1*(theta*norms + delta*abs(Tr-tr))/d)
-    weights = np.power(1-delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
+    weights = np.exp(-1*(theta*norms)/d - delta*(Tr-tr)**2)
+    # weights = np.power(1-delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
     # W = np.diag(np.sqrt(weights))
     W = np.diag(weights)
     # weights = np.reshape(weights,(weights.shape[0],1))
@@ -537,13 +562,13 @@ def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLands
 def sigmoid(x):
     return 1/(1+np.exp(-x))
 
-def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, deltaInit=0):
+def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, deltaInit=0, minLags=0):
 
     tableNS = np.zeros((maxLags, 3))
     tableS = np.zeros((maxLags, 2))
 
     # for each number of lags from 0 to maxLags
-    for l in range(maxLags):
+    for l in range(minLags, maxLags):
         X, Y, tx = delayEmbed(Xr, horizon, l, lagStepsize, t=t)
 
         #   run optimization for NSMap and NSMap
@@ -632,7 +657,7 @@ def SMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0):
     return (hp[0], err)
 """
 # Optimize using GRADIENT DESCENT instead of evaluating a grid
-def optimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, hp=np.array([0,0],dtype=float)):
+def optimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=40, hp=np.array([0,0],dtype=float), fixed=np.array([False, False])):
 
     err = 0
     count = 0
@@ -644,11 +669,12 @@ def optimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, hp=np.array([0,0],
     deltaPrev = np.ones(hp.shape, dtype=float)
     errPrev = 1
     
-    while abs(err-errPrev) > 0.001 and count < trainingSteps:
+    while abs(err-errPrev) > 0.0001 and count < trainingSteps:
         errPrev = err
         
         if len(hp)==1:
             grad, err = gradient(X, Y, t, hp[0], 0, errFunc=errFunc)
+            grad = grad[0,None]
         else:
             grad, err = gradient(X, Y, t, hp[0], hp[1], errFunc=errFunc)
         
@@ -666,12 +692,12 @@ def optimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, hp=np.array([0,0],
         count += 1
 
         # floor and ceiling on the hyperparameters
-        hp[0] = max(0, hp[0] + dweights[0])
-        if len(hp) == 2:
-            hp[1] = min(1-(10e-5), max(0, hp[1] + dweights[1]))
+        for i in range(2):
+            if not fixed[i]:
+                hp[i] = max(0, hp[i] + dweights[i])
 
-        # print(hp)
-        # print(err)
+        print(hp)
+        print(err)
 
     if len(hp) == 1:
         return (hp[0], err)
