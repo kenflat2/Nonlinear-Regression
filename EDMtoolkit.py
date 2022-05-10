@@ -25,8 +25,18 @@ def removeNANs(TS, t=None):
 
     return D
 
+def distanceMatrix(X):
+    n = X.shape[0]
+    
+    distance_matrix = np.zeros((n,n),dtype=float)
+    for i in range(n):
+        for j in range(n):
+            distance_matrix[i,j] = la.norm(X[i]-X[j])
+            
+    return distance_matrix
+
 # create a delay embeddding vector from a given UNIVARIATE time series.
-def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=False):
+def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=True):
     # Remove NAs before embedding
     if removeNAs:
         notNA = np.all(~np.isnan(Dr),axis=1)
@@ -59,6 +69,35 @@ def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=False):
         ty = t[predHorizon : predHorizon - rowsLost]
         tx = t[:-rowsLost]
         return (B[:,1:], B[:,0, None], tx)
+
+### MULTIVARIATE DELAY EMBEDDING ###
+def delayEmbedM(Xin, Yin,assignment,embInterval):
+    
+    tmplen = Xin.shape[1]
+
+    tmp = np.zeros([sum(x) for x in zip(Xin.shape,(0,sum(assignment)))])
+    tmp[:,:Xin.shape[1]] = Xin
+    Xin = tmp
+
+    lag = 1
+    newColInd = 0
+    if len(assignment) != tmplen:
+        print("Assigment list doesn't match the number of variables in data array! ",assignment)
+        return
+    else:
+        # code that creates the lags
+        for i in range(len(assignment)):
+            for _ in range(assignment[i]):
+                newCol = Xin[:-embInterval*lag,i]
+                Xin[embInterval*lag:, tmplen + newColInd] = newCol
+                newColInd += 1
+                lag += 1
+    Xin = Xin[embInterval*sum(assignment):]
+    Yin = Yin[embInterval*sum(assignment):]
+    
+    # Yin = Yin[-X.shape[0]:]
+    
+    return (Xin, Yin)
 
 # Lyapunov Edition
 # calculate dominant finite time lyapunov exponent of a system
@@ -170,6 +209,7 @@ def calculateD(states):
 
 def getHat(M, W, x):
     hat = x @ la.pinv(W@M) @ W
+
     """
     if (isInvertible((W@M).T @ (W@M))):
         # hat = x @ la.inv(X.T @ W @ X) @ (W@X).T @ W
@@ -238,14 +278,9 @@ def peakToPeakInterval(X, t, a,b,c):
     imax1 = Xr[b:c].argmax() + b
     return t[imax1] - t[imax0]
 
-def AkaikeTest(errNS, errS, dofNS, dofS, n):
-    # we assume err1 is lower
-
-    l1 = n * np.log(errS / errNS) / -2
-    p1 = np.exp(dofNS - dofS + l1)
-    
-    l2 = n * np.log(errNS / errS) / -2
-    p2 = np.exp(dofS - dofNS + l2)
+def AkaikeTest(AICS, AICNS):
+    p1 = np.exp((AICNS-AICS)/2)
+    p2 = np.exp((AICS-AICNS)/2)
 
     if p1 < p2:
         print("Probability SMap beats NSMap: ", p1)
@@ -339,6 +374,55 @@ def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
     else:
         return timestepPredictions
 
+def sequential(X, Y, tx, theta, delta, return_error=True):
+    trainSize = int(X.shape[0] / 2)
+    testSize = X.shape[0] - trainSize
+    timestepPredictions = np.zeros((testSize, 1))
+    
+    for i in range(int(X.shape[0]/2), X.shape[0]):
+        # create the train and test stuff        
+        # if delta == 0:
+        #     prediction = SMap(X[:i], Y[:i], X[i], theta)
+        # else:
+        prediction = NSMap(X[:i], Y[:i], tx[:i], X[i], tx[i], theta, delta)
+        
+        timestepPredictions[i - trainSize] = prediction
+
+    if return_error:
+        return np.mean((timestepPredictions-Y[trainSize:])**2)
+    else:
+        return timestepPredictions
+
+def logLikelihood(X, Y, tx, theta, delta, returnSeries=False):
+    
+    n = Y.shape[0]
+
+    Yhat = leaveOneOut(X, Y, tx, theta, delta)
+    k = dofestimation(X, Y, tx, theta, delta)
+
+    mean_squared_residuals = np.sum((Y-Yhat)**2) / (n-k)
+    
+    lnL = (-n/2)*(np.log(mean_squared_residuals) + np.log(2*np.pi) + 1 )
+
+    if returnSeries:
+        return (lnL, Yhat)
+    else:
+        return lnL
+
+def logUnLikelihood(X, Y, tx, theta, delta, returnSeries=False):
+    return -logLikelihood(X, Y, tx, theta, delta, returnSeries=False)
+
+def AIC(X, Y, tx, theta, delta):
+    n = X.shape[0]
+
+    lnL = logLikelihood(X, Y, tx, theta, delta)
+
+    k = dofestimation(X, Y, tx, theta, delta)
+
+    AIC = 2 * ( k - lnL )
+
+    return AIC
+
 # leaves one input and output pair out, and use rest as training data
 def schreiberContinuous(X, Y, tx, theta, delta):
 
@@ -364,27 +448,6 @@ def schreiberContinuous(X, Y, tx, theta, delta):
         
     return error_matrix
 
-def sequential(X, Y, tx, theta, delta, returnSeries=False):
-    trainSize = int(X.shape[0] / 2)
-    testSize = X.shape[0] - trainSize
-    timestepPredictions = np.zeros((testSize, 1))
-    
-    for i in range(int(X.shape[0]/2), X.shape[0]):
-        # create the train and test stuff        
-        # if delta == 0:
-        #     prediction = SMap(X[:i], Y[:i], X[i], theta)
-        # else:
-        prediction = NSMap(X[:i], Y[:i], tx[:i], X[i], tx[i], theta, delta)
-        
-        timestepPredictions[i - trainSize] = prediction
-
-    error = np.sum((timestepPredictions-Y[trainSize:]) ** 2)
-
-    if returnSeries:
-        return (error, timestepPredictions)
-    else:
-        return error
-
 # make a 1 time step prediction based on a given state(nD vector)
 def SMap(X, Y, x, theta):
     norms = la.norm(X-x,axis=1)
@@ -400,7 +463,7 @@ def SMap(X, Y, x, theta):
     # return x @ H
 
 ### TIME IS NOT INCLUDED AS A STATE VARIABLE ###
-"""
+
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
     norms = la.norm(X - x,axis=1)
@@ -409,7 +472,7 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     tr = (t - np.min(T)) / np.ptp(T)
     Tr = (T - np.min(T)) / np.ptp(T)
     
-    weights = np.power(1-delta, abs(Tr-tr)) * np.exp(-1*theta*norms/d)
+    weights = np.exp(-1*(theta*norms)/d - delta*(Tr-tr)**2)
     W = np.diag(weights)
     
     Tr = Tr.reshape((T.shape[0],1))
@@ -426,8 +489,8 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
         return (prediction, H)
     else:
         return prediction
-"""
 
+"""
 ### THIS VERSION INCLUDES THE MONOTONICALLY INCREASING DRIVER ###
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
@@ -462,7 +525,7 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
         return (prediction, H)
     else:
         return prediction
-
+"""
 """
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
@@ -562,59 +625,60 @@ def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLands
 def sigmoid(x):
     return 1/(1+np.exp(-x))
 
-def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0, deltaInit=0, minLags=0):
+def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=logUnLikelihood, trainingSteps=20, hp=np.array([0.0,0.0]), minLags=0):
 
-    tableNS = np.zeros((maxLags, 3))
-    tableS = np.zeros((maxLags, 2))
+    tableNS = np.zeros((maxLags+1-minLags, 4))
+    tableS = np.zeros((maxLags+1-minLags, 3))
 
     # for each number of lags from 0 to maxLags
-    for l in range(minLags, maxLags):
-        X, Y, tx = delayEmbed(Xr, horizon, l, lagStepsize, t=t)
+    for l in range(minLags, maxLags+1):
+        print(f"Embedding Dimension = {l+2}")
+        if Xr.shape[1] == 1:
+            X, Y, tx = delayEmbed(Xr, horizon, l, lagStepsize, t=t)
+        else:
+            emb_array = (np.ones(Xr.shape[1])*l).astype(int)
+            X, Y = delayEmbedM(Xr[:-horizon], Xr[horizon:,0,None], emb_array, lagStepsize)
+            tx = np.linspace(0,1,num=X.shape[0])
 
-        #   run optimization for NSMap and NSMap
-        hpNS = np.array([thetaInit, deltaInit],dtype=float)
-        hpS = np.array([thetaInit],dtype=float)
+        print("NSMap")
+        thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
+        print("SMap")
+        thetaS, _, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
 
-        thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc, hp=hpNS)
-        thetaS, errS = optimizeG(X, Y, tx, errFunc, hp=hpS)
-
-        tableNS[l, 0] = errNS
-        tableNS[l, 1] = thetaNS
-        tableNS[l, 2] = deltaNS
+        tableNS[l-minLags, 0] = errNS
+        tableNS[l-minLags, 1] = thetaNS
+        tableNS[l-minLags, 2] = deltaNS
+        tableNS[l-minLags, 3] = l
         
-        tableS[l, 0] = errS
-        tableS[l, 1] = thetaS
+        tableS[l-minLags, 0] = errS
+        tableS[l-minLags, 1] = thetaS
+        tableS[l-minLags, 2] = l
 
     iNS = np.argsort(tableNS[:,0])[0]
     iS = np.argsort(tableS[:,0])[0]
-        
+    
     # return best hyperparameters and minimum error for each
 
-    print(f"NSMap: \n Min error {tableNS[iNS, 0]} \n Optimal Lags: {iNS+1} \n Theta: {tableNS[iNS, 1]} \n Delta: {tableNS[iNS, 2]}")
-    print(f"SMap: \n Min error {tableS[iS, 0]} \n Optimal Lags: {iS+1} \n Theta: {tableS[iS, 1]}")
+    print(f"NSMap: \n Max Likelihood {-tableNS[iNS, 0]} \n Optimal Lags: {int(tableNS[iNS,3])} \n Theta: {tableNS[iNS, 1]} \n Delta: {tableNS[iNS, 2]}")
+    print(f"SMap: \n Max Likelihood {-tableS[iS, 0]} \n Optimal Lags: {int(tableS[iS,2])} \n Theta: {tableS[iS, 1]}")
     
     # (thetaNS, deltaNS, errNS, lagsNS, thetaS, errS, lagsS)
-    return (tableNS[iNS, 1], tableNS[iNS, 2], tableNS[iNS, 0], iNS, tableS[iS,1], tableS[iS,0], iS)
+    return (tableNS[iNS, 1], tableNS[iNS, 2], -tableNS[iNS, 0], int(tableNS[iNS,3]), tableS[iS,1], -tableS[iS,0], int(tableS[iS,2]))
 
 
 # numerically evaluates gradient
-def gradient(X, Y, tx, theta, delta, errFunc=leaveOneOut):
+def gradient(X, Y, tx, theta, delta, errFunc=logUnLikelihood):
     # this is the gap used to evaluate the gradient
     D = 0.01
     
     ddelta = max(min(D, (1-delta)/2), 10e-5)
     dtheta = D
 
-    predictions = errFunc(X, Y, tx, theta, delta)
-    E = np.sum((predictions-Y)**2)
+    E = errFunc(X, Y, tx, theta, delta)
     
-    predictionst= errFunc(X, Y, tx, theta + dtheta, delta)
-    Et = np.sum((predictionst-Y)**2)
+    Et= errFunc(X, Y, tx, theta + dtheta, delta)
     
-    predictionsd = errFunc(X, Y, tx, theta, delta + ddelta)
-    Ed = np.sum((predictionsd-Y)**2)
-
-    # print(E, Et,Ed)
+    Ed = errFunc(X, Y, tx, theta, delta + ddelta)
 
     grad = ((E-Et)/dtheta, (E-Ed)/ddelta)
 
@@ -657,52 +721,46 @@ def SMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0):
     return (hp[0], err)
 """
 # Optimize using GRADIENT DESCENT instead of evaluating a grid
-def optimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=40, hp=np.array([0,0],dtype=float), fixed=np.array([False, False])):
-
+def optimizeG(X, Y, t, errFunc=logUnLikelihood, trainingSteps=20, hp=np.array([0.0,0.0]), fixed=np.array([False, False])):    
     err = 0
-    count = 0
-
-    rhoplus = 1.1 # if the sign of the gradient doesn't change, must be > 1
-    rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
     
     gradPrev = np.ones(hp.shape, dtype=float)
     deltaPrev = np.ones(hp.shape, dtype=float)
-    errPrev = 1
     
-    while abs(err-errPrev) > 0.0001 and count < trainingSteps:
+    for count in range(trainingSteps):
         errPrev = err
         
-        if len(hp)==1:
-            grad, err = gradient(X, Y, t, hp[0], 0, errFunc=errFunc)
-            grad = grad[0,None]
-        else:
-            grad, err = gradient(X, Y, t, hp[0], hp[1], errFunc=errFunc)
+        grad, err = gradient(X, Y, t, hp[0], hp[1], errFunc=errFunc)
+
+        print(f"[{count+1:02d}] theta: {hp[0]:.3f}, delta: {hp[1]:.3f}, log Likelihood: {-err:.3f}")
+
+        if abs(err-errPrev) < 0.01 or count == trainingSteps-1:
+            break
+
+        dweights, deltaPrev, gradPrev = calculateHPChange(grad, gradPrev, deltaPrev)
         
-        grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
-
-        s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
-        spos = np.ceil(s) # 0 for - vals, 1 for + vals
-        sneg = -1 * (spos - 1)
-
-        delta = np.multiply((rhoplus * spos) + (rhominus * sneg), deltaPrev)
-        dweights = np.multiply(delta, ( np.ceil(grad) - 0.5 ) * 2) # make sure signs reflect the orginal gradient
-
-        deltaPrev = delta
-        gradPrev = grad
-        count += 1
-
         # floor and ceiling on the hyperparameters
         for i in range(2):
             if not fixed[i]:
                 hp[i] = max(0, hp[i] + dweights[i])
 
-        print(hp)
-        print(err)
 
-    if len(hp) == 1:
-        return (hp[0], err)
-    else:
-        return (hp[0], hp[1], err)
+    return (hp[0], hp[1], err)
+
+def calculateHPChange(grad, gradPrev, deltaPrev):
+    rhoplus = 1.1 # if the sign of the gradient doesn't change, must be > 1
+    rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
+    
+    grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
+
+    s = np.multiply(grad, gradPrev) # ratio between -1 and 1 for each param
+    spos = np.ceil(s) # 0 for - vals, 1 for + vals
+    sneg = -1 * (spos - 1)
+
+    delta = np.multiply((rhoplus * spos) + (rhominus * sneg), deltaPrev)
+    dweights = np.multiply(delta, ( np.ceil(grad) - 0.5 ) * 2) # make sure signs reflect the orginal gradient
+
+    return (dweights, delta, grad)
                  
 """
 def NSMapOptimize(X, Y, tx, thetaVals, deltaVals, calc_hat=False):
