@@ -36,16 +36,7 @@ def distanceMatrix(X):
     return distance_matrix
 
 # create a delay embeddding vector from a given UNIVARIATE time series.
-def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=True):
-    # Remove NAs before embedding
-    if removeNAs:
-        notNA = np.all(~np.isnan(Dr),axis=1)
-
-        D = Dr[notNA]
-        if t is not None:
-            t = t[notNA]
-    else:
-        D = Dr
+def delayEmbed(D, predHorizon, nLags, embInterval, t = None, removeNAs=True):
     
     totalRows = D.shape[0] + predHorizon + embInterval * nLags
     A = np.zeros((totalRows, 2 + nLags))
@@ -60,15 +51,23 @@ def delayEmbed(Dr, predHorizon, nLags, embInterval, t = None, removeNAs=True):
     rowsLost = predHorizon + nLags * embInterval
     if rowsLost != 0:
         B = A[rowsLost : -rowsLost]
+        if t is not None:
+            t = t[ : -rowsLost]
     else: 
         B = A
+    
+    if removeNAs:
+        notNA = np.all(~np.isnan(B),axis=1)
+
+        B = B[notNA]
+        if t is not None:
+            print(t.shape, notNA.shape)
+            t = t[notNA]
     
     if t is None:
         return (B[:,1:], B[:,0, None])
     else:
-        ty = t[predHorizon : predHorizon - rowsLost]
-        tx = t[:-rowsLost]
-        return (B[:,1:], B[:,0, None], tx)
+        return (B[:,1:], B[:,0, None], t)
 
 ### MULTIVARIATE DELAY EMBEDDING ###
 def delayEmbedM(Xin, Yin,assignment,embInterval):
@@ -625,7 +624,7 @@ def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLands
 def sigmoid(x):
     return 1/(1+np.exp(-x))
 
-def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=logUnLikelihood, trainingSteps=20, hp=np.array([0.0,0.0]), minLags=0):
+def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=logUnLikelihood, trainingSteps=30, hp=np.array([0.0,0.0]), minLags=0):
 
     tableNS = np.zeros((maxLags+1-minLags, 4))
     tableS = np.zeros((maxLags+1-minLags, 3))
@@ -640,9 +639,9 @@ def optimizationSuite(Xr, t, horizon, maxLags, lagStepsize, errFunc=logUnLikelih
             X, Y = delayEmbedM(Xr[:-horizon], Xr[horizon:,0,None], emb_array, lagStepsize)
             tx = np.linspace(0,1,num=X.shape[0])
 
-        print("NSMap")
+        # print("NSMap")
         thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
-        print("SMap")
+        # print("SMap")
         thetaS, _, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
 
         tableNS[l-minLags, 0] = errNS
@@ -868,3 +867,95 @@ def functionSurfaceNSMap(Xr, predHorizon, theta, delta, resolution):
     ax.axes.set_zlim3d(bottom=np.min(Xr),top=np.max(Xr))
 
     plt.show()
+
+def MDStimescaleDecomp(Xr, lags=3, window_size=0.2):
+    X, _ = delayEmbed(Xr, 1, lags, 1)
+    
+    n = X.shape[0]
+    
+    distance_matrix = distanceMatrix(X)
+
+    similarity_matrix = np.zeros((n,n))
+    for i in range(n):
+        for j in range(n):
+            similarity_matrix[i,j] = dynamicSimilarity(distance_matrix, i, j, window_size=window_size)
+    print(f"{i},{j}:{similarity_matrix[i,j]}")
+    
+    similarity_matrix = standardize(similarity_matrix)
+    
+    fig, ax = plt.subplots(1)
+    ax.imshow(similarity_matrix)
+    plt.show()
+    
+    embedding = MDS(dissimilarity="precomputed")
+    X_transformed = embedding.fit_transform(similarity_matrix)
+    
+    return X_transformed
+    
+"""
+def dynamicSimilarity(distance_matrix, t1, t2, window_size=0.2):
+    n = distance_matrix.shape[0]
+    n_neighbors = 3
+    
+    win_radius = int(n * window_size)
+    
+    U = max(0, t1-win_radius)
+    D = min(n, t1+win_radius)
+    L = max(0, t2-win_radius)
+    R = min(n, t2+win_radius)
+    
+    window = distance_matrix[U:D, L:R]
+
+    distance = np.mean(np.exp(-window))
+    
+    return distance
+
+    dynamic_similarity = 0
+    for x1 in window1:
+        neighbors = nearestNeighbors(x1, window2, n_neighbors)
+        for neighbor in neighbors:
+            dynamic_similarity += la.norm(neighbor-x1)**2
+    
+    return dynamic_similarity / (n*n_neighbors)
+    
+"""
+
+"""
+def driverVdelta(resolution):
+    # Final data will be
+    # Nonstat Rate(0,1)|thetaNS|deltaNS|errNS(l1o)|errNS(seq)|lagNS|dofNS|thetaS|errS(l1o)|errS(seq)|lagS|dofS
+    
+    table = np.zeros((resolution, 12))
+    
+    x0 = np.array([0.1,0.4,9])
+    for r in range(resolution):
+        rate = float(r)/resolution
+        b1 = lambda t: 2.5 + rate * 4 * t / end
+        
+        Xr = standardize(generateTimeSeriesContinuous('HastingsPowellP', x0, nsargs=(b1,), end=end, tlen = tlen, reduction = reduction, settlingTime=settlingTime))[:,0,None]
+
+        predictionHorizon = 1
+        lagStep = 1
+        maxLags = 6
+        
+        plotTS(Xr)
+        
+        thetaNS, deltaNS, errNS, lagsNS, thetaS, errS, lagsS = optimizationSuite(Xr, tr, predictionHorizon, maxLags, lagStep)
+        
+        Xn, Yn, txn = delayEmbed(Xr, predictionHorizon, lagsNS, lagStep, t=t)
+        dofNS = dofestimation(Xn, Yn, txn, thetaNS, deltaNS)
+
+        Xs, Ys, txs = delayEmbed(Xr, predictionHorizon, lagsS, lagStep, t=t)
+        dofS = dofestimation(Xs, Ys, txs, thetaNS, 0)
+        
+        MSENS, sequentialNS = sequential(Xn, Yn, txn, thetaNS, deltaNS, returnSeries=True)
+        MSES, sequentialS = sequential(Xs, Ys, txs, thetaS, 0, returnSeries=True)
+        
+        stinky = np.array([rate,thetaNS,deltaNS,errNS,MSENS,lagsNS,dofNS,thetaS,errS,MSES,lagsS,dofS])
+        for pp in range(12):
+            table[r,pp] = stinky[pp]
+            
+        AkaikeTest(errNS, errS, dofNS, dofS, Xr.shape[0])
+        
+    return table
+"""   
