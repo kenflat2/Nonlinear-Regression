@@ -210,8 +210,8 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
         if nsargs == None:
             x0 = odeint(F, t0, tSettle)[-1]
         else:
-            driverSettle = lambda t : nsargs[0](0)
-            x0 = odeint(F, t0, tSettle, args=(driverSettle,))[-1]
+            driver_settle = tuple([lambda t: x(0) for x in nsargs])
+            x0 = odeint(F, t0, tSettle, args=driver_settle)[-1]
     else:
         x0 = t0
                 

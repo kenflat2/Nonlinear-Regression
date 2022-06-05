@@ -624,41 +624,44 @@ def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLands
 def sigmoid(x):
     return 1/(1+np.exp(-x))
 
-def optimizationSuite(Xr, t, horizon, lagRange, tauRange, errFunc=logUnLikelihood, trainingSteps=30, hp=np.array([0.0,0.0])):
+def optimizationSuite(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, trainingSteps=30, hp=np.array([0.0,0.0])):
 
-    n_lags = lagRange.shape[0]
-    n_taus = tauRange.shape[0]
+    tableNS = np.zeros(5)
+    tableS = np.zeros(4)
 
-    tableNS = np.zeros((n_lags, n_taus, 5))
-    tableS = np.zeros((n_lags, n_taus, 4))
+    Xemb, Y, tx = delayEmbed(Xr, horizon, maxLags, 1, t=t)
 
     # for each number of lags from 0 to maxLags
-    for i, l in enumerate(lagRange):
-        for j, tau in enumerate(tauRange):
+    for tau in range(1,1+int((maxLags+1)/2)):
+        for l in range(maxLags+2):
+            if (tau > 1 and l == 0) or ((l+1)*tau >= Xemb.shape[1]):
+                continue
+            
             print(f"E = {l+2}, tau = {tau}")
-            if Xr.shape[1] == 1:
-                X, Y, tx = delayEmbed(Xr, horizon, l, tau, t=t)
-            else:
-                emb_array = (np.ones(Xr.shape[1])*l).astype(int)
-                X, Y = delayEmbedM(Xr[:-horizon], Xr[horizon:,0,None], emb_array, lagStepsize)
-                tx = np.linspace(0,1,num=X.shape[0])
+
+            X = Xemb[:,:(l+1)*tau:tau]
+            #else:
+            #   emb_array = (np.ones(Xr.shape[1])*l).astype(int)
+            #   X, Y = delayEmbedM(Xr[:-horizon], Xr[horizon:,0,None], emb_array, lagStepsize)
+            #   tx = np.linspace(0,1,num=X.shape[0])
 
             print("NSMap")
             thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
             print("SMap")
             thetaS, _, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
 
-            tableNS[i,j,:] = np.array([errNS, thetaNS, deltaNS, l, tau])
-            tableS[i,j,:] = np.array([errS, thetaS, l, tau])
+            tableNS = np.vstack([tableNS, np.array([errNS, thetaNS, deltaNS, l, tau])])
+            tableS = np.vstack([tableS, np.array([errS, thetaS, l, tau])])
 
-    iNS = np.unravel_index(np.argmin(tableNS[:,:,0]), (n_lags, n_taus))
-    iS = np.unravel_index(np.argmin(tableS[:,:,0]), (n_lags, n_taus))
+    tableNS = np.delete(tableNS, 0, 0)
+    tableS = np.delete(tableS, 0, 0)
+
+    iNS = np.argmin(tableNS[:,0])
+    iS = np.argmin(tableS[:,0])
     
-    print(iNS, iS)
     # return best hyperparameters and minimum error for each
-
-    print(f"NSMap: \n Max Likelihood {-tableNS[iNS][0]} \n Lags: {int(tableNS[iNS][3])} \n tau: {int(tableNS[iNS][4])} \n Theta: {tableNS[iNS][1]} \n Delta: {tableNS[iNS][2]}")
-    print(f"SMap: \n Max Likelihood {-tableS[iS][0]} \n Lags: {int(tableS[iS][2])} \n tau: {int(tableS[iS][3])} \n Theta: {tableS[iS][1]}")
+    print(f"NSMap: \n Max Likelihood {-tableNS[iNS][0]} \n E: {2+int(tableNS[iNS][3])} \n tau: {int(tableNS[iNS][4])} \n Theta: {tableNS[iNS][1]} \n Delta: {tableNS[iNS][2]}")
+    print(f"SMap: \n Max Likelihood {-tableS[iS][0]} \n E: {2+int(tableS[iS][2])} \n tau: {int(tableS[iS][3])} \n Theta: {tableS[iS][1]}")
     
     # (thetaNS, deltaNS, errNS, lagsNS, tauNS, thetaS, errS, lagsS, tauS)
     return (tableNS[iNS][1], tableNS[iNS][2], -tableNS[iNS][0], int(tableNS[iNS][3]), int(tableNS[iNS][4]), tableS[iS][1], -tableS[iS][0], int(tableS[iS][2]), int(tableS[iS][3]))
