@@ -18,6 +18,47 @@ def Mease(x,t):
     
     return (x1p, x2p)
 
+### MULTIDIMENSIONAL TENT MAP ###
+# proof of correctness: we wish for the first map to act on its own,
+# the following uses the current value of the previous as its midpoint,
+# so on an so on until some end. The length of the input vector 
+# determines the number of dimensions.
+def Tents(x, t):
+    x_new = np.zeros(x.shape)
+
+    x_new[0] = Tent(x[0], t, 0.5)
+
+    # the first one is an unmodified tent map, the latter uses the value
+    # of the former for its midpoint.
+    for i in range(1, x.shape[0]):
+        x_new[i] = Tent(x[i], t, x[i-1])
+
+    return x_new
+
+# a single tent map where the midpoint is specified
+def Tent(x, t, M):
+
+    if type(M) == np.dtype("f8"):
+        assert M >= 0 and M <= 1
+        m = M
+    else:
+        m = M(t)
+
+    # Proof of Correctness: the only thing we need to check is that we
+    # never divide by 0. If m is neither 0 nor 1 then this will never
+    # happen. If m is 0 then if x is > 0 we just return 1-x, and if
+    # x is 0 then x==m and we correctly return 1. If m is 1 and x<1
+    # then the second condition is chosen and we are fine, if x==1 then
+    # we again return 1. //
+
+    if x == m:
+        return 1
+    elif x < m:
+        return x / m
+    elif x > m:
+        return (1-x) / (1-m)
+
+
 def Logistic(x, t):
     r = 4
     return r * x * (1-x)
@@ -214,7 +255,7 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
             x0 = odeint(F, t0, tSettle, args=driver_settle)[-1]
     else:
         x0 = t0
-                
+    
     t = np.linspace(0,end,num=tlen*reduction)
     
     if nsargs == None:

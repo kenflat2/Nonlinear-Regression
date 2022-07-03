@@ -4,6 +4,7 @@ import numpy.linalg as la
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from modelSystems import *
 from scipy import stats
 
 epsilon = 2e-10
@@ -61,7 +62,7 @@ def delayEmbed(D, predHorizon, nLags, embInterval, t = None, removeNAs=True):
 
         B = B[notNA]
         if t is not None:
-            print(t.shape, notNA.shape)
+            # print(t.shape, notNA.shape)
             t = t[notNA]
     
     if t is None:
@@ -324,7 +325,7 @@ def dofestimation(X, Y, tx, theta, delta):
     dofest = 0
     for i in range(X.shape[0]):
         pred, hatvector = NSMap(X, Y, tx, X[i], tx[i], theta, delta, return_hat=True)
-        dofest += hatvector[0,i]
+        dofest += hatvector[i]
     return dofest
 
 def chisig(lambdaLR, dof):
@@ -391,7 +392,7 @@ def sequential(X, Y, tx, theta, delta, return_error=True):
         return np.mean((timestepPredictions-Y[trainSize:])**2)
     else:
         return timestepPredictions
-
+@profile
 def logLikelihood(X, Y, tx, theta, delta, returnSeries=False):
     
     n = Y.shape[0]
@@ -462,24 +463,24 @@ def SMap(X, Y, x, theta):
     # return x @ H
 
 ### TIME IS NOT INCLUDED AS A STATE VARIABLE ###
-
+# INPUTS
+#   X - (ndarray) training data, (n,p) array of state space variables
+#   Y - (ndarray) labels
+#   T - (ndarray) time for each row in X
+#   x - (ndarray) current state to predict from
+#   t - (scalar) current time to predict from
+#   theta - (scalar) hyperparameter
+#   delta - (scalar) hyperparameter
+# Note that T and t(where) must be standardized to be between 0 and 1 
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
     norms = la.norm(X - x,axis=1)
     d = np.mean(norms)
-    
-    tr = (t - np.min(T)) / np.ptp(T)
-    Tr = (T - np.min(T)) / np.ptp(T)
-    
-    weights = np.exp(-1*(theta*norms)/d - delta*(Tr-tr)**2)
-    W = np.diag(weights)
-    
-    Tr = Tr.reshape((T.shape[0],1))
-    
-    M = np.hstack([X, np.ones(Tr.shape)])
-    
-    xaug = np.hstack([x, 1])
-    xaug = np.reshape(xaug, (1,xaug.shape[0]))
+
+    W = np.diag(np.exp(-1*(theta*norms)/d - delta*(T-t)**2))
+    M = np.hstack([X, np.ones((X.shape[0],1))])
+
+    xaug = np.hstack([x, 1]).T
     
     H = getHat(M, W, xaug)
     prediction = H @ Y
@@ -559,7 +560,7 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     else:
         return prediction
 """
-
+"""
 def SMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, returnLandscape=False, minLags=0):
     errorLandscape = np.ones((thetas.shape[0], maxLags+1-minLags))
 
@@ -620,7 +621,7 @@ def NSMapOptimize(Xr, t, horizon, maxLags, stepsize, thetas, deltas, returnLands
         return (thetaBest, deltaBest, lagBest, minError, errorLandscape)
     else: 
         return (thetaBest, deltaBest, lagBest, minError)
-
+"""
 def sigmoid(x):
     return 1/(1+np.exp(-x))
 
@@ -645,9 +646,9 @@ def optimizationSuite(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, training
             #   X, Y = delayEmbedM(Xr[:-horizon], Xr[horizon:,0,None], emb_array, lagStepsize)
             #   tx = np.linspace(0,1,num=X.shape[0])
 
-            print("NSMap")
+            #print("NSMap")
             thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
-            print("SMap")
+            #print("SMap")
             thetaS, _, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
 
             tableNS = np.vstack([tableNS, np.array([errNS, thetaNS, deltaNS, l, tau])])
@@ -722,7 +723,7 @@ def SMapOptimizeG(X, Y, t, errFunc=leaveOneOut, trainingSteps=20, thetaInit=0):
     return (hp[0], err)
 """
 # Optimize using GRADIENT DESCENT instead of evaluating a grid
-def optimizeG(X, Y, t, errFunc=logUnLikelihood, trainingSteps=20, hp=np.array([0.0,0.0]), fixed=np.array([False, False])):    
+def optimizeG(X, Y, t, errFunc=logUnLikelihood, trainingSteps=40, hp=np.array([0.0,0.0]), fixed=np.array([False, False])):    
     err = 0
     
     gradPrev = np.ones(hp.shape, dtype=float)
@@ -733,7 +734,7 @@ def optimizeG(X, Y, t, errFunc=logUnLikelihood, trainingSteps=20, hp=np.array([0
         
         grad, err = gradient(X, Y, t, hp[0], hp[1], errFunc=errFunc)
 
-        print(f"[{count+1:02d}] theta: {hp[0]:.3f}, delta: {hp[1]:.3f}, log Likelihood: {-err:.3f}")
+        # print(f"[{count+1:02d}] theta: {hp[0]:.3f}, delta: {hp[1]:.3f}, log Likelihood: {-err:.3f}")
 
         if abs(err-errPrev) < 0.01 or count == trainingSteps-1:
             break
@@ -894,6 +895,89 @@ def MDStimescaleDecomp(Xr, lags=3, window_size=0.2):
     
     return X_transformed
     
+def EvsLikelihood(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=np.array([0.0,0.0])):
+
+    table = np.zeros((maxLags, 3))
+
+    tau = 1
+
+    Xemb, Y, tx = delayEmbed(Xr, horizon, maxLags, 1, t=t)
+
+    # for each number of lags from 0 to maxLags
+    for l in range(maxLags+1):
+        if (tau > 1 and l == 0) or ((l+1)*tau >= Xemb.shape[1]):
+            continue
+
+        X = Xemb[:,:(l+1)*tau:tau]
+
+        print("NSMap")
+        _, _, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
+        print("SMap")
+        _, _, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
+        print("DLM")
+        _, _, errDLM = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([True, False]))
+
+        # we negate because 
+        table[l] = np.array([-errNS, -errS, -errDLM])
+
+    Es = np.array(range(2,maxLags+2))
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(Es, table[:,0], label="NSMap")
+    ax.plot(Es, table[:,1], label="SMap")
+    ax.plot(Es, table[:,2], label="DLM")
+    ax.set_xlabel("Embedding Dimension")
+    ax.set_ylabel("Log Likelihood")
+    ax.legend()
+    plt.show()
+
+    return table
+
+def StationaryProbability(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=np.array([0.0,0.0])):
+
+    table = np.zeros((maxLags, 5))
+
+    tau = 1
+    Xemb, Y, tx = delayEmbed(Xr, horizon, maxLags, tau, t=t)
+
+    # for each number of lags from 0 to maxLags
+    for l in range(maxLags+1):
+        print(f"E={2+l}")
+        if (tau > 1 and l == 0) or ((l+1)*tau >= Xemb.shape[1]):
+            continue
+
+        X = Xemb[:,:(l+1)*tau:tau]
+
+        # print("NSMap")
+        thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
+        # print("SMap")
+        thetaS, deltaS, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
+
+        dofNS = dofestimation(X, Y, tx, thetaNS, deltaNS)
+        dofS = dofestimation(X, Y, tx, thetaS, deltaS)
+
+        # we negate because 
+        table[l] = np.array([-errNS, -errS, dofNS, dofS, deltaNS])
+    
+    Es = np.array(range(2,maxLags+2))
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(Es, table[:,0], label="NSMap")
+    ax.plot(Es, table[:,1], label="SMap")
+    ax.set_xlabel("Embedding Dimension")
+    ax.set_ylabel("Log Likelihood")
+    ax.legend()
+    plt.show()
+
+    return table
+
+    lambdaLR = 2 * np.sum(table[:,0] - table[:,1])
+    dof_difference = np.sum(table[:,2] - table[:,3])
+
+    return chisig(lambdaLR, dof_difference)
+
 """
 def dynamicSimilarity(distance_matrix, t1, t2, window_size=0.2):
     n = distance_matrix.shape[0]
@@ -961,3 +1045,12 @@ def driverVdelta(resolution):
         
     return table
 """   
+
+Xr = generateTimeSeriesContinuous("HastingsPowell", np.array([1,3,7]))[:,0,None]
+
+X = Xr[:-1]
+Y = Xr[1:]
+t = np.linspace(0,1, num=X.shape[0])
+
+optimizeG(X, Y, t)
+#leaveOneOut(X, Y, t, 1, 1, get_hat=False)
