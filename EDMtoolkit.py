@@ -392,16 +392,19 @@ def sequential(X, Y, tx, theta, delta, return_error=True):
         return np.mean((timestepPredictions-Y[trainSize:])**2)
     else:
         return timestepPredictions
-@profile
+
 def logLikelihood(X, Y, tx, theta, delta, returnSeries=False):
     
     n = Y.shape[0]
 
     Yhat = leaveOneOut(X, Y, tx, theta, delta)
-    k = dofestimation(X, Y, tx, theta, delta)
-
-    mean_squared_residuals = np.sum((Y-Yhat)**2) / (n-k)
     
+    # mean_squared_residuals = np.sum((Y-Yhat)**2) / n
+    
+    ### VERSION WITH MODEL DEGREES OF FREEDOM INCORPORATED
+    k = dofestimation(X, Y, tx, theta, delta)
+    mean_squared_residuals = np.sum((Y-Yhat)**2) / (n-k)
+
     lnL = (-n/2)*(np.log(mean_squared_residuals) + np.log(2*np.pi) + 1 )
 
     if returnSeries:
@@ -472,22 +475,22 @@ def SMap(X, Y, x, theta):
 #   theta - (scalar) hyperparameter
 #   delta - (scalar) hyperparameter
 # Note that T and t(where) must be standardized to be between 0 and 1 
+
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
     norms = la.norm(X - x,axis=1)
     d = np.mean(norms)
 
-    W = np.diag(np.exp(-1*(theta*norms)/d - delta*(T-t)**2))
+    W = np.exp(-1*(theta*norms)/d - delta*(T-t)**2)[:,None]
     M = np.hstack([X, np.ones((X.shape[0],1))])
-
     xaug = np.hstack([x, 1]).T
-    
-    H = getHat(M, W, xaug)
-    prediction = H @ Y
-    
+
     if return_hat:
+        H = xaug @ (la.pinv(W*M).T * W).T
+        prediction = H @ Y
         return (prediction, H)
     else:
+        prediction = xaug @ la.lstsq( W * M, W * Y, rcond=None)[0]
         return prediction
 
 """
@@ -961,7 +964,7 @@ def StationaryProbability(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=n
         table[l] = np.array([-errNS, -errS, dofNS, dofS, deltaNS])
     
     Es = np.array(range(2,maxLags+2))
-
+    """
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.plot(Es, table[:,0], label="NSMap")
@@ -970,7 +973,8 @@ def StationaryProbability(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=n
     ax.set_ylabel("Log Likelihood")
     ax.legend()
     plt.show()
-
+    """
+    
     return table
 
     lambdaLR = 2 * np.sum(table[:,0] - table[:,1])
