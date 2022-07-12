@@ -475,9 +475,9 @@ def SMap(X, Y, x, theta):
 #   theta - (scalar) hyperparameter
 #   delta - (scalar) hyperparameter
 # Note that T and t(where) must be standardized to be between 0 and 1 
-
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False):
     # create weights
+    
     norms = la.norm(X - x,axis=1)
     d = np.mean(norms)
 
@@ -964,7 +964,7 @@ def StationaryProbability(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=n
         table[l] = np.array([-errNS, -errS, dofNS, dofS, deltaNS])
     
     Es = np.array(range(2,maxLags+2))
-    """
+    
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.plot(Es, table[:,0], label="NSMap")
@@ -973,7 +973,7 @@ def StationaryProbability(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=n
     ax.set_ylabel("Log Likelihood")
     ax.legend()
     plt.show()
-    """
+    
     
     return table
 
