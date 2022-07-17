@@ -481,7 +481,7 @@ def SMap(X, Y, x, theta):
 
 def NSMap(X, Y, T, x, t, theta, delta, return_hat=False, return_hat_derivatives=False):
     # create weights
-    
+
     n = X.shape[0]
 
     norms = la.norm(X - x,axis=1)
@@ -491,26 +491,25 @@ def NSMap(X, Y, T, x, t, theta, delta, return_hat=False, return_hat_derivatives=
     M = np.hstack([X, np.ones((n,1))])
     xaug = np.hstack([x, 1]).T
 
-    if return_hat:
-        H = xaug @ (la.pinv(W*M).T * W).T
-        prediction = H @ Y
-        return (prediction, H)
-    if return_hat_derivatives:
+    if return_hat or return_hat_derivatives:
         pinv = la.pinv(W*M)
 
-        dWdtheta = -1 * W.flatten() * norms / d
-        dWddelta = -1 * W.flatten() * ((T-t)**2)
+        H = xaug @ (pinv.T * W).T
+        prediction = (H @ Y)[0]
 
-        dthetapinv = (dWdtheta[:,None].T * pinv)
-        ddeltapinv = (dWddelta[:,None].T * pinv)
+        if return_hat_derivatives:
+            dWdtheta = -1 * W.flatten() * norms / d
+            dWddelta = -1 * W.flatten() * ((T-t)**2)
 
-        dhdtheta = 2 * xaug @ (dthetapinv - dthetapinv @ M @ (pinv * W.T))
-        dhddelta = 2 * xaug @ (ddeltapinv - ddeltapinv @ M @ (pinv * W.T))
+            dthetapinv = (dWdtheta[:,None].T * pinv)
+            ddeltapinv = (dWddelta[:,None].T * pinv)
 
-        H = xaug @ (W * pinv.T).T
-        prediction = H @ Y
+            dhdtheta = 2 * xaug @ (dthetapinv - dthetapinv @ M @ (pinv * W.T))
+            dhddelta = 2 * xaug @ (ddeltapinv - ddeltapinv @ M @ (pinv * W.T))
 
-        return (prediction, H, dhdtheta, dhddelta)
+            return (prediction, H, dhdtheta, dhddelta)
+    
+        return (prediction, H)
     else:
         prediction = xaug @ la.lstsq( W * M, W * Y, rcond=None)[0]
         return prediction
@@ -692,10 +691,13 @@ def optimizationSuite(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, training
     # (thetaNS, deltaNS, errNS, lagsNS, tauNS, thetaS, errS, lagsS, tauS)
     return (tableNS[iNS][1], tableNS[iNS][2], tableNS[iNS][0], int(tableNS[iNS][3]), int(tableNS[iNS][4]), tableS[iS][1], tableS[iS][0], int(tableS[iS][2]), int(tableS[iS][3]))
 
-def get_delta_agg(Xr, t, horizon, maxLags, tau=1, trainingSteps=30):
+def get_delta_agg(Xr, t, maxLags, horizon=1, tau=1, trainingSteps=100):
 
-    tableNS = np.zeros((maxLags+1, 3))
-    tableS = np.zeros((maxLags+1, 2))
+    # Remember to standardize t to be between 0 and 1!
+    assert t[0] == 0 and t[-1] == 1
+
+    table = np.zeros((maxLags+1, 3))
+    hp = np.zeros(2)
 
     Xemb, Y, tx = delayEmbed(Xr, horizon, maxLags, tau, t=t)
 
@@ -705,13 +707,27 @@ def get_delta_agg(Xr, t, horizon, maxLags, tau=1, trainingSteps=30):
 
         X = Xemb[:,:(l+1)*tau:tau]
 
-        thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, trainingSteps=trainingSteps)
-        thetaS, _, errS = optimizeG(X, Y, tx, fixed=np.array([False, True]),trainingSteps=trainingSteps)
+        #print("NSMap")
+        _, deltaNS, errNS = optimizeG(X, Y, tx, trainingSteps=trainingSteps, hp=hp.copy())
+        #print("SMap")
+        _, _, errS = optimizeG(X, Y, tx, fixed=np.array([False, True]),trainingSteps=trainingSteps, hp=hp.copy())
 
-        tableNS[l] = np.array([thetaNS, deltaNS, errNS])
-        tableS[l] = np.array([thetaS, errS])
+        table[l] = np.array([deltaNS, errNS, errS])
 
-    return np.average(tableNS[:,1], weights=np.exp(tableNS[:,2] - tableS[:,1]))
+    fig, ax = plt.subplots(1,2,figsize=(10,4))
+    ax[0].plot(range(2,maxLags+3), table[:,1], label="NSMap")
+    ax[0].plot(range(2,maxLags+3), table[:,2], label="SMap")
+    ax[0].set_xlabel("E")
+    ax[0].set_ylabel("lnL")
+    ax[0].legend()
+    ax[1].plot(range(2,maxLags+3), table[:,0])
+    ax[1].set_xlabel("E")
+    ax[1].set_ylabel("delta")
+
+    plt.tight_layout()
+    plt.show()
+
+    return np.average(table[:,0], weights=np.exp(table[:,1] - table[:,2]))
     
 # finds the gradient of the likelihood function with respect to our hyperparameters theta and delta
 def gradient(X, Y, tx, theta, delta):
@@ -741,7 +757,7 @@ def gradient(X, Y, tx, theta, delta):
         prediction, _, hat_vec_dtheta_L, hat_vec_ddelta_L = NSMap(Xjtr, Yjtr, tXjtr, Xjts, tXjts, theta, delta, return_hat_derivatives=True)
         _, hat_vec, hat_vec_dtheta, hat_vec_ddelta = NSMap(X, Y, tx, Xjts, tXjts, theta, delta, return_hat_derivatives=True)
 
-        residual = Yjts - prediction
+        residual = Yjts[0] - prediction
 
         SSE += (residual) ** 2
         dof += hat_vec[i]
@@ -751,10 +767,13 @@ def gradient(X, Y, tx, theta, delta):
         dDOF_dtheta += hat_vec_dtheta[i]
         dDOF_ddelta += hat_vec_ddelta[i]
 
-    dl_dtheta = (-n/2) * ( dSSE_dtheta / SSE + dDOF_dtheta / (n-dof))
-    dl_ddelta = (-n/2) * ( dSSE_ddelta / SSE + dDOF_ddelta / (n-dof))
+    assert type(SSE) == np.float64
 
-    E = ((-n/2) * ( np.log(SSE / (n-dof)) + np.log(2*np.pi) + 1))[0]
+    # this is ugly, but we have to include the max stuff to prevent divide by 0 errors
+    dl_dtheta = (-n/2) * ( dSSE_dtheta / max(SSE, 10e-6) + dDOF_dtheta / max(n-dof, 10e-6))
+    dl_ddelta = (-n/2) * ( dSSE_ddelta / max(SSE, 10e-6) + dDOF_ddelta / max(n-dof, 10e-6))
+
+    E = ((-n/2) * ( np.log(max(SSE, 10e-6) / max(n-dof, 10e-6)) + np.log(2*np.pi) + 1))
 
     return (np.hstack([dl_dtheta, dl_ddelta]), E)
 
@@ -808,13 +827,13 @@ def optimizeG(X, Y, t, trainingSteps=40, hp=np.array([0.0,0.0]), fixed=np.array(
         
         grad, err = gradient(X, Y, t, hp[0], hp[1])
 
-        # print(f"[{count+1:02d}] theta: {hp[0]:.3f}, delta: {hp[1]:.3f}, log Likelihood: {err:.3f}")
+        print(f"[{count+1:02d}] theta: {hp[0]:.3f}, delta: {hp[1]:.3f}, log Likelihood: {err:.3f}")
 
         if abs(err-errPrev) < 0.01 or count == trainingSteps-1:
             break
 
         dweights, deltaPrev, gradPrev = calculateHPChange(grad, gradPrev, deltaPrev)
-        
+         
         # floor and ceiling on the hyperparameters
         for i in range(2):
             if not fixed[i]:
@@ -823,7 +842,7 @@ def optimizeG(X, Y, t, trainingSteps=40, hp=np.array([0.0,0.0]), fixed=np.array(
     return (hp[0], hp[1], err)
 
 def calculateHPChange(grad, gradPrev, deltaPrev):
-    rhoplus = 1.1 # if the sign of the gradient doesn't change, must be > 1
+    rhoplus = 1.2 # if the sign of the gradient doesn't change, must be > 1
     rhominus = 0.5 # if the sign DO change, then use this val, must be < 1
     
     grad = grad / la.norm(grad)# np.abs(grad) # NORMALIZE, because rprop ignores magnitude
@@ -984,11 +1003,11 @@ def EvsLikelihood(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=np.array(
         X = Xemb[:,:(l+1)*tau:tau]
 
         print("NSMap")
-        _, _, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
+        _, _, errNS = optimizeG(X, Y, tx, hp=hp.copy())
         print("SMap")
-        _, _, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
+        _, _, errS = optimizeG(X, Y, tx, hp=hp.copy(), fixed=np.array([False, True]))
         print("DLM")
-        _, _, errDLM = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([True, False]))
+        _, _, errDLM = optimizeG(X, Y, tx, hp=hp.copy(), fixed=np.array([True, False]))
 
         # we negate because 
         table[l] = np.array([errNS, errS, errDLM])
@@ -1023,15 +1042,15 @@ def StationaryProbability(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=n
         X = Xemb[:,:(l+1)*tau:tau]
 
         # print("NSMap")
-        thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy())
+        thetaNS, deltaNS, errNS = optimizeG(X, Y, tx, hp=hp.copy())
         # print("SMap")
-        thetaS, deltaS, errS = optimizeG(X, Y, tx, errFunc=errFunc, hp=hp.copy(), fixed=np.array([False, True]))
+        thetaS, deltaS, errS = optimizeG(X, Y, tx, hp=hp.copy(), fixed=np.array([False, True]))
 
         dofNS = dofestimation(X, Y, tx, thetaNS, deltaNS)
         dofS = dofestimation(X, Y, tx, thetaS, deltaS)
 
         # we negate because 
-        table[l] = np.array([-errNS, -errS, dofNS, dofS, deltaNS])
+        table[l] = np.array([errNS, errS, dofNS, dofS, deltaNS])
     
     Es = np.array(range(2,maxLags+2))
     
@@ -1043,7 +1062,6 @@ def StationaryProbability(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, hp=n
     ax.set_ylabel("Log Likelihood")
     ax.legend()
     plt.show()
-    
     
     return table
 
