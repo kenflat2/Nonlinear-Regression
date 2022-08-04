@@ -1,11 +1,13 @@
 import numpy as np
 import math
 import numpy.linalg as la
+import numpy.random as rand
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from modelSystems import *
 from scipy import stats
+from multiprocessing import Process
 # import line_profiler
 
 # profile = line_profiler.LineProfiler()
@@ -230,12 +232,16 @@ def getHat(M, W, x):
     """
     return hat
 
-def poincare3d(timeseries, step=1, title="", scatter=True):
+def poincare3d(timeseries, step=1, title="", scatter=True, color_wrt_time=False):
     eeee, yyyy = delayEmbed(timeseries, 0, 3, step)
     figPP = plt.figure()
     axPP = figPP.gca(projection="3d")
     if scatter:
-        axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
+        if color_wrt_time:
+            colors = np.linspace(0,1,num=len(eeee))
+            axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1, c=colors)
+        else:
+            axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
     else: 
         axPP.plot(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
     axPP.set_xlabel("x(t)")
@@ -247,11 +253,17 @@ def poincare3d(timeseries, step=1, title="", scatter=True):
     axPP.set_zticks([])
     plt.show()
     
-def poincare2d(timeseries, step=1):
+def poincare2d(timeseries, title=None, step=1, color_wrt_time=False):
     figTT, axTT = plt.subplots(1)
-    axTT.scatter(timeseries[:-step], timeseries[step:])
+    if color_wrt_time:
+        colors = np.linspace(0,1,num=len(timeseries)-step)# [str(elem) for elem in  np.linspace(0.5,1,num=len(timeseries)-step)]
+        axTT.scatter(timeseries[:-step].flatten(), timeseries[step:].flatten(), cmap="plasma", c=colors)
+    else:
+        axTT.scatter(timeseries[:-step], timeseries[step:])
     axTT.set_xlabel("x(t)")
     axTT.set_ylabel("x(t+1)")
+    if title != None:
+        axTT.set_title(title)
     plt.show()
     
 def poincareT(timeseries,step=1,xlabel="x(t)",zlabel="x(t+tau)", scatter=True):
@@ -337,6 +349,7 @@ def chisig(lambdaLR, dof):
     return 1 - stats.chi2.cdf(lambdaLR,dof)
 
 # leaves one input and output pair out, and use rest as training data
+# returns predictions which are the length of the whole time series
 def leaveOneOut(X, Y, tx, theta, delta, get_hat=False):
     
     if get_hat:
@@ -691,14 +704,14 @@ def optimizationSuite(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, training
     # (thetaNS, deltaNS, errNS, lagsNS, tauNS, thetaS, errS, lagsS, tauS)
     return (tableNS[iNS][1], tableNS[iNS][2], tableNS[iNS][0], int(tableNS[iNS][3]), int(tableNS[iNS][4]), tableS[iS][1], tableS[iS][0], int(tableS[iS][2]), int(tableS[iS][3]))
 
-def get_delta_agg(Xr, t, maxLags, horizon=1, tau=1, trainingSteps=100):
-
+def get_delta_agg(Xr, t, maxLags, horizon=1, tau=1, trainingSteps=100, return_forecast_skill=False):
     # Remember to standardize t to be between 0 and 1!
     assert t[0] == 0 and t[-1] == 1
 
-    table = np.zeros((maxLags+1, 3))
+    table = np.zeros((maxLags+1, 5))
     hp = np.zeros(2)
 
+    # produce delay embedding vector first so the set of targets is fixed across all E
     Xemb, Y, tx = delayEmbed(Xr, horizon, maxLags, tau, t=t)
 
     # for each number of lags from 0 to maxLags
@@ -707,18 +720,19 @@ def get_delta_agg(Xr, t, maxLags, horizon=1, tau=1, trainingSteps=100):
 
         X = Xemb[:,:(l+1)*tau:tau]
 
-        #print("NSMap")
-        _, deltaNS, errNS = optimizeG(X, Y, tx, trainingSteps=trainingSteps, hp=hp.copy())
-        #print("SMap")
-        _, _, errS = optimizeG(X, Y, tx, fixed=np.array([False, True]),trainingSteps=trainingSteps, hp=hp.copy())
+        # print("NSMap")
+        thetaNS, deltaNS, lnLNS = optimizeG(X, Y, tx, trainingSteps=trainingSteps, hp=hp.copy())
+        # print("SMap")
+        thetaS, _, lnLS = optimizeG(X, Y, tx, fixed=np.array([False, True]),trainingSteps=trainingSteps, hp=hp.copy())
 
-        table[l] = np.array([deltaNS, errNS, errS])
+        table[l] = np.array([deltaNS, lnLNS, lnLS, thetaNS, thetaS])
 
+    
     fig, ax = plt.subplots(1,2,figsize=(10,4))
-    ax[0].plot(range(2,maxLags+3), table[:,1], label="NSMap")
-    ax[0].plot(range(2,maxLags+3), table[:,2], label="SMap")
+    ax[0].plot(range(2,maxLags+3), table[:,1], "g--", label="NSMap")
+    ax[0].plot(range(2,maxLags+3), table[:,2], "b--", label="SMap")
     ax[0].set_xlabel("E")
-    ax[0].set_ylabel("lnL")
+    ax[0].set_ylabel("log Likelihood")
     ax[0].legend()
     ax[1].plot(range(2,maxLags+3), table[:,0])
     ax[1].set_xlabel("E")
@@ -726,9 +740,49 @@ def get_delta_agg(Xr, t, maxLags, horizon=1, tau=1, trainingSteps=100):
 
     plt.tight_layout()
     plt.show()
-
-    return np.average(table[:,0], weights=np.exp(table[:,1] - table[:,2]))
     
+
+    lnLdifference = table[:,1] - table[:,2]
+    delta_agg_weights = np.exp(lnLdifference - np.max(lnLdifference))
+    delta_agg = np.average(table[:,0], weights=delta_agg_weights)
+
+    if return_forecast_skill:
+        return (delta_agg, get_r_sqrd(table, Xemb, Y, tau, tx))
+    else: 
+        return delta_agg
+
+# ugly but necessary function, finds the r squared coefficient based on the other data from get_delta_agg
+def get_r_sqrd(table, Xemb, Y, tau, tx):
+    ibestNS = np.argmax(table[:,1])
+    ibestS = np.argmax(table[:,2])
+
+    # if NSMap has a higher log likelihood than SMap then use NSMap's hyperparameters
+    if table[ibestNS,1] > table[ibestS,2]:
+        delta = table[ibestNS, 0]
+        theta = table[ibestNS, 3]
+        i = ibestNS
+    # else use SMap's
+    else:
+        delta = 0
+        theta = table[ibestS, 4]
+        i = ibestS
+
+    # produce forecasts based on the optimal hyperparameters
+    X = Xemb[:,:(i+1)*tau:tau]
+    Y_hat = leaveOneOut(X, Y, tx, theta, delta)
+
+    fig, ax = plt.subplots(1)
+    ax.plot(Y.flatten(), label="True Time Series", c="blue")
+    ax.plot(Y_hat.flatten(), label="Leave One Out Forecasts", linestyle="dashed", c = "green")
+    ax.set_xlabel('time')
+    ax.set_ylabel("abudance")
+    ax.legend()
+    plt.show()
+
+    rsqr = np.corrcoef(Y.flatten(), Y_hat.flatten())[0,1] ** 2
+
+    return rsqr
+
 # finds the gradient of the likelihood function with respect to our hyperparameters theta and delta
 def gradient(X, Y, tx, theta, delta):
     # we should be able to pull this off with two passes, once for leave one out and again leave all in.
@@ -827,7 +881,7 @@ def optimizeG(X, Y, t, trainingSteps=40, hp=np.array([0.0,0.0]), fixed=np.array(
         
         grad, err = gradient(X, Y, t, hp[0], hp[1])
 
-        print(f"[{count+1:02d}] theta: {hp[0]:.3f}, delta: {hp[1]:.3f}, log Likelihood: {err:.3f}")
+        # print(f"[{count+1:02d}] theta: {hp[0]:.3f}, delta: {hp[1]:.3f}, log Likelihood: {err:.3f}")
 
         if abs(err-errPrev) < 0.01 or count == trainingSteps-1:
             break
@@ -1139,12 +1193,38 @@ def driverVdelta(resolution):
 """   
 
 """
-Xr = generateTimeSeriesContinuous("HastingsPowell", np.array([1,3,7]))[:,0,None]
+def run_example():
+    Xr = generateTimeSeriesContinuous("HastingsPowell", np.array([1,3,7]))[:,0,None]
+    t = np.linspace(0,1, num=Xr.shape[0])
 
-X = Xr[:-1]
-Y = Xr[1:]
-t = np.linspace(0,1, num=X.shape[0])
-
-optimizeG(X, Y, t)
-#leaveOneOut(X, Y, t, 1, 1, get_hat=False)
+    print(get_delta_agg(Xr, t, 10))
 """
+
+def run_example():
+    settlingTime = 2 ** 12
+    tlen = 2 ** 7
+    noise_magnitude = 0.0
+    maxLags = 5
+
+    t = np.linspace(0, 1, num=tlen)
+
+    rate = rand.random(1)[0]
+    x0 = rand.rand(1)
+
+    r = lambda t: 4 - rate * t / tlen
+    
+    Xr = generateTimeSeriesDiscrete("LogisticP", x0, tlen=tlen, nsargs=(r,), settlingTime=settlingTime)
+    Xr += noise_magnitude * np.ptp(Xr) * (rand.random((Xr.shape[0],1))-0.5) 
+
+    delta_agg = get_delta_agg(Xr, t, maxLags)
+
+    print(f"{rate},{delta_agg}")
+
+if __name__ == "__main__":
+    num_repetitions = 20
+
+    for j in range(num_repetitions):
+        print(f"Process {j} starting")
+        p = Process(target=run_example, args=())
+        p.start()
+    p.join()
