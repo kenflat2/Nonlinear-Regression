@@ -15,7 +15,7 @@ from multiprocessing import Process
 epsilon = 2e-10
 
 def standardize(x):
-    return (x - np.mean(x, axis=0)) / np.std(x, axis=0)
+    return (x - np.mean(x, axis=0, where=np.isfinite(x))) / np.std(x, axis=0, where=np.isfinite(x))
 
 def nearestNeighbors(s0, S, n):
     orderedNeighbors = np.argsort(la.norm(s0 - S[:-1],axis=1))    
@@ -238,8 +238,10 @@ def poincare3d(timeseries, step=1, title="", scatter=True, color_wrt_time=False)
     axPP = figPP.gca(projection="3d")
     if scatter:
         if color_wrt_time:
+            cm = plt.cm.get_cmap('RdYlBu')
             colors = np.linspace(0,1,num=len(eeee))
-            axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1, c=colors)
+            scat = axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1, c=colors, cmap=cm)
+            plt.colorbar(scat)
         else:
             axPP.scatter(eeee[:,0],eeee[:,1],eeee[:,2],linewidth=1)
     else: 
@@ -704,9 +706,13 @@ def optimizationSuite(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, training
     # (thetaNS, deltaNS, errNS, lagsNS, tauNS, thetaS, errS, lagsS, tauS)
     return (tableNS[iNS][1], tableNS[iNS][2], tableNS[iNS][0], int(tableNS[iNS][3]), int(tableNS[iNS][4]), tableS[iS][1], tableS[iS][0], int(tableS[iS][2]), int(tableS[iS][3]))
 
-def get_delta_agg(Xr, t, maxLags, horizon=1, tau=1, trainingSteps=100, return_forecast_skill=False):
-    # Remember to standardize t to be between 0 and 1!
-    assert t[0] == 0 and t[-1] == 1
+def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, return_forecast_skill=False):
+    
+    if t is None:
+        t = np.linspace(0,1, num=len(Xr))
+    else:
+        # Remember to standardize t to be between 0 and 1!
+        assert t[0] == 0 and t[-1] == 1
 
     table = np.zeros((maxLags+1, 5))
     hp = np.zeros(2)
@@ -727,27 +733,32 @@ def get_delta_agg(Xr, t, maxLags, horizon=1, tau=1, trainingSteps=100, return_fo
 
         table[l] = np.array([deltaNS, lnLNS, lnLS, thetaNS, thetaS])
 
-    
+    """
     fig, ax = plt.subplots(1,2,figsize=(10,4))
-    ax[0].plot(range(2,maxLags+3), table[:,1], "g--", label="NSMap")
-    ax[0].plot(range(2,maxLags+3), table[:,2], "b--", label="SMap")
+    E_range = range(2,maxLags+3)
+    ax[0].plot(E_range, table[:,1], "g--", label="NSMap")
+    ax[0].plot(E_range, table[:,2], "b--", label="SMap")
     ax[0].set_xlabel("E")
     ax[0].set_ylabel("log Likelihood")
+    ax[0].set_xticks(E_range)
     ax[0].legend()
-    ax[1].plot(range(2,maxLags+3), table[:,0])
+    ax[1].plot(E_range, table[:,0])
     ax[1].set_xlabel("E")
     ax[1].set_ylabel("delta")
+    ax[1].set_xticks(E_range)
 
     plt.tight_layout()
     plt.show()
-    
+    """
 
     lnLdifference = table[:,1] - table[:,2]
+    # ns_area =  np.sum(np.maximum(lnLdifference, np.zeros(maxLags+1)))
     delta_agg_weights = np.exp(lnLdifference - np.max(lnLdifference))
     delta_agg = np.average(table[:,0], weights=delta_agg_weights)
+    theta_agg = np.average(table[:,3], weights=delta_agg_weights)
 
     if return_forecast_skill:
-        return (delta_agg, get_r_sqrd(table, Xemb, Y, tau, tx))
+        return (delta_agg, theta_agg, get_r_sqrd(table, Xemb, Y, tau, tx))
     else: 
         return delta_agg
 
@@ -771,6 +782,7 @@ def get_r_sqrd(table, Xemb, Y, tau, tx):
     X = Xemb[:,:(i+1)*tau:tau]
     Y_hat = leaveOneOut(X, Y, tx, theta, delta)
 
+    """
     fig, ax = plt.subplots(1)
     ax.plot(Y.flatten(), label="True Time Series", c="blue")
     ax.plot(Y_hat.flatten(), label="Leave One Out Forecasts", linestyle="dashed", c = "green")
@@ -778,7 +790,7 @@ def get_r_sqrd(table, Xemb, Y, tau, tx):
     ax.set_ylabel("abudance")
     ax.legend()
     plt.show()
-
+    """
     rsqr = np.corrcoef(Y.flatten(), Y_hat.flatten())[0,1] ** 2
 
     return rsqr

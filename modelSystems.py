@@ -153,11 +153,9 @@ def RosenzweigMacArthur(x, t):
 
     return (dx, dy, dz)
 
-def Lorenz96P(x, t, F):
-    N = 5 # dimension
-
+def Lorenz96P(x, t, F, N):
     # Setting up vector
-    d = np.zeros(N)
+    d = x.copy()
     # Loops over indices (with operations and Python underflow indexing handling edge cases)
     for i in range(N):
         d[i] = (x[(i + 1) % N] - x[i - 2]) * x[i - 1] - x[i] + F(t)
@@ -251,7 +249,16 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
         if nsargs == None:
             x0 = odeint(F, t0, tSettle)[-1]
         else:
-            driver_settle = tuple([lambda t: x(0) for x in nsargs])
+            driver_settle_list = []
+            for xxx in nsargs:
+                if type(xxx) is int or type(xxx) is float:
+                    # print(f"int {x}")
+                    driver_settle_list.append(xxx)
+                else:
+                    initial_param_value = xxx(0)
+                    driver_settle_list.append(lambda _: initial_param_value)
+
+            driver_settle = tuple(driver_settle_list)
             x0 = odeint(F, t0, tSettle, args=driver_settle)[-1]
     else:
         x0 = t0
@@ -265,7 +272,7 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
 
     return ts
 
-def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None):
+def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None, process_noise=0):
     F = globals()[f]
     
     if type(t0) == float:
@@ -285,10 +292,10 @@ def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None):
     # now evaluate
     if nsargs==None:
         for i in range(1,tlen):
-            ts[i] = F(ts[i-1], i)
+            ts[i] = F(ts[i-1], i) + process_noise*rand.normal(0,1)
     else:
         for i in range(1,tlen):
-            ts[i] = F(ts[i-1], i, *nsargs)
+            ts[i] = F(ts[i-1], i, *nsargs) + process_noise*rand.normal(0,1)
 
     return ts
 
