@@ -239,7 +239,7 @@ def test(f):
 """
 
 # just one function that should take care of all my integrating needs
-def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingTime=0, nsargs=None):
+def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingTime=0, nsargs=None, process_noise=0):
     F = globals()[f]
 
     if settlingTime > 0:
@@ -264,11 +264,15 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
         x0 = t0
     
     t = np.linspace(0,end,num=tlen*reduction)
-    
+    ts = np.zeros((tlen,len(x0)))
+    ts[0] = x0
+
     if nsargs == None:
-        ts = odeint(F, x0, t)[::reduction]
+        for i in range(tlen-1):
+            ts[i+1] = odeint(F, ts[i], t[i*reduction:(i+1)*reduction])[-1] * np.exp(rand.normal(0,process_noise))
     else:
-        ts = odeint(F, x0, t, args=nsargs)[::reduction]
+        for i in range(tlen-1):
+            ts[i+1] = odeint(F, ts[i], t[i*reduction:(i+1)*reduction],args=nsargs)[-1] * np.exp(rand.normal(0,process_noise))
 
     return ts
 

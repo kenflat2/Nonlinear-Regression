@@ -421,6 +421,7 @@ def logLikelihood(X, Y, tx, theta, delta, returnSeries=False):
     
     ### VERSION WITH MODEL DEGREES OF FREEDOM INCORPORATED
     k = dofestimation(X, Y, tx, theta, delta)
+    print(f"dof = {k}")
     mean_squared_residuals = np.sum((Y-Yhat)**2) / (n-k)
 
     lnL = (-n/2)*(np.log(mean_squared_residuals) + np.log(2*np.pi) + 1 )
@@ -722,9 +723,7 @@ def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, retu
 
     # for each number of lags from 0 to maxLags
     for l in range(maxLags+1):
-        # print(f"E = {l+2}, tau = {tau}")
-
-        X = Xemb[:,:(l+1)*tau:tau]
+        X = Xemb[:,:l+1]
 
         # print("NSMap")
         thetaNS, deltaNS, lnLNS = optimizeG(X, Y, tx, trainingSteps=trainingSteps, hp=hp.copy())
@@ -742,10 +741,12 @@ def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, retu
     ax[0].set_ylabel("log Likelihood")
     ax[0].set_xticks(E_range)
     ax[0].legend()
-    ax[1].plot(E_range, table[:,0])
+    ax[1].plot(E_range, table[:,0],label="delta")
+    ax[1].plot(E_range, table[:,3],label="theta")
     ax[1].set_xlabel("E")
     ax[1].set_ylabel("delta")
     ax[1].set_xticks(E_range)
+    ax[1].legend()
 
     plt.tight_layout()
     plt.show()
@@ -791,6 +792,7 @@ def get_r_sqrd(table, Xemb, Y, tau, tx):
     ax.legend()
     plt.show()
     """
+
     rsqr = np.corrcoef(Y.flatten(), Y_hat.flatten())[0,1] ** 2
 
     return rsqr
@@ -1240,3 +1242,18 @@ if __name__ == "__main__":
         p = Process(target=run_example, args=())
         p.start()
     p.join()
+
+def find_tau_autocorr(X):
+    Xstd = standardize(X.flatten())
+    
+    # we will return the index of the first negative entry
+    tau = 0
+    while True:
+        A,B = delayEmbed(Xstd,tau,0,0)
+        c = np.corrcoef(A.flatten(),B.flatten())[0,1]
+        print(c)
+        if c < 0 or tau >= len(Xstd):
+            break
+        tau += 1
+        
+    return tau
