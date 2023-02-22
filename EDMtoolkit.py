@@ -1251,7 +1251,7 @@ def find_tau_autocorr(X):
     while True:
         A,B = delayEmbed(Xstd,tau,0,0)
         c = np.corrcoef(A.flatten(),B.flatten())[0,1]
-        print(c)
+        # print(c)
         if c < 0 or tau >= len(Xstd):
             break
         tau += 1
