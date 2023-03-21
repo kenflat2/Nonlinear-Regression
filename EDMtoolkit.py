@@ -707,7 +707,7 @@ def optimizationSuite(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, training
     # (thetaNS, deltaNS, errNS, lagsNS, tauNS, thetaS, errS, lagsS, tauS)
     return (tableNS[iNS][1], tableNS[iNS][2], tableNS[iNS][0], int(tableNS[iNS][3]), int(tableNS[iNS][4]), tableS[iS][1], tableS[iS][0], int(tableS[iS][2]), int(tableS[iS][3]))
 
-def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, return_forecast_skill=False):
+def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, return_forecast_skill=False, theta_fixed=False):
     
     if t is None:
         t = np.linspace(0,1, num=len(Xr))
@@ -726,9 +726,9 @@ def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, retu
         X = Xemb[:,:l+1]
 
         # print("NSMap")
-        thetaNS, deltaNS, lnLNS = optimizeG(X, Y, tx, trainingSteps=trainingSteps, hp=hp.copy())
+        thetaNS, deltaNS, lnLNS = optimizeG(X, Y, tx, fixed=np.array([theta_fixed, False]), trainingSteps=trainingSteps, hp=hp.copy())
         # print("SMap")
-        thetaS, _, lnLS = optimizeG(X, Y, tx, fixed=np.array([False, True]),trainingSteps=trainingSteps, hp=hp.copy())
+        thetaS, _, lnLS = optimizeG(X, Y, tx, fixed=np.array([theta_fixed, True]),trainingSteps=trainingSteps, hp=hp.copy())
 
         table[l] = np.array([deltaNS, lnLNS, lnLS, thetaNS, thetaS])
 
