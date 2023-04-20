@@ -1,0 +1,624 @@
+\documentclass{article}
+
+% Language setting
+% Replace `english' with e.g. `spanish' to change the document language
+\usepackage[english]{babel}
+
+% Set page size and margins
+% Replace `letterpaper' with `a4paper' for UK/EU standard size
+\usepackage[letterpaper,top=2cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+\linespread{1.7}
+
+% Useful packages
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{bm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\usepackage{lineno}
+%\usepackage{biblatex}
+
+\newcommand{\SSE}{\operatorname{SSE}} %principal argument
+\newcommand{\dof}{\operatorname{dof}} %principal argument
+\newcommand{\tr}{\operatorname{tr}} %principal argument
+\newcommand{\pinv}{\operatorname{pinv}} %principal argument
+
+% \addbibresource{sample.bib}
+%\addbibresource{nonstationarity_fellows.bib}
+
+\title{Quantifying Nonstationarity in Ecological Time Series}
+\author{Kenneth Gee$^{1}$, Tanya L. Rogers$^{2}$, Stephan B. Munch$^{1,2,\ast}$}
+
+\begin{document}
+\maketitle
+
+\noindent{} 1. Department of Applied Mathematics, University of California, Santa Cruz, California, USA
+
+\noindent{} 2. Southwest Fisheries Science Center, National Oceanic and Atmospheric Administration, Santa Cruz, California, USA
+
+\noindent{} $\ast$ Corresponding author; e-mail: smunch@ucsc.edu
+
+\noindent{} \textit{Running headline}: not more than 45 characters.
+
+\linenumbers{}
+\modulolinenumbers[1]
+
+\begin{abstract}
+Climate change, invasive species and contemporary evolution are all thought to cause ongoing change in ecosystems. Ecosystems undergoing changes like this are dubbed “nonstationary” and pose a major problem for modeling and forecasting efforts. \textit{This isn't quite right because we demonstrate that there are ecosystems which are being impacted by these things, but we wouldn't consider them nonstationary}.  Here we propose a nonparametric, data-driven method for quantifying nonstationarity in ecological time series. The method agrees with existing assessments of the presence of nonstationarity in field time of plankton abundance. When applied to long term time series of plankton abundances from a community kept under laboratory conditions this method detects nonstationarity, suggesting that ongoing evolution impacted population dynamics over long timescales.
+
+\noindent{} \textit{Keywords}: A list in alphabetical order not exceeding eight words or short phrases.
+
+\end{abstract}
+
+\section{Introduction}
+
+Ecology must become a more predictive science to meet conservation and management objectives. However, a ubiquitous obstacle to ecological prediction is nonstationarity, defined as a change in the mean, variance, covariance, or other statistical properties of a dynamical system over time or space. In ecosystems, such changes are often observed and may occur for a variety of reasons including changing environmental conditions, increasing human pressures, or species introductions (Rollinson et al. 2021). For example, many ecosystem shifts have been attributed to increasing global temperatures (REFS), overharvesting (REFS), and species invasions (REFS). The main problem this presents for prediction is that in a nonstationary system, past behavior cannot necessarily be used to predict future behavior, and models found to accurately forecast dynamics in the past may not longer perform well in the new `regime'. Attribution of nonstationarity to the incorrect driver can also severely impact prediction and attempts to reverse or slow undesirable changes (our technique doesn't address this problem).
+
+Given its importance for prediction, several different methods have been proposed to quantify temporal nonstationarity in ecological time series (and in time series generally). A simple test for the presence of nonstationarity involves dividing a time series into two (or more) segments and asking whether a model fit to one segment of time can adequately predict values in the other segment (REFS). {abrupt transition, we should comment on these other techniques} Other studies have used a sliding window approach to identify points at which shifts in statistical properties occur (REFS). When fitting a single model for a time series, one common way to accommodate nonstationarity is to allow the model parameters to change over time: by `forgetting' the past, only the most recent data points influence the model predictions. A widely used example of this approach is the Dynamic Linear Model (DLM), which is a linear model with time-varying coefficients \cite{west_dynamic_1985}. The rate at which the parameters are allowed to change (the discounting rate), is used to measure the degree of nonstationarity of the system.
+
+{This paragraph feels clunky and too long}
+{We should produce an example of a system which is nonlinear but is better represented by a nonstationarity linear model. I fear this point is not conveyed clearly in this version.}
+However, some additional thought {pompous} reveals potential conceptual issues with how nonstationarity is typically quantified, and in particular the use of time-varying coefficients in a linear model. Namely, any stationary nonlinear system can be represented as a nonstationary linear system (REF). Thus, if one fits a linear model to a stationary nonlinear system, it will be classified as nonstationary even though the underlying dynamics are constant. Moreover, while the nonstationary linear and stationary nonlinear models may have similar in-sample fits, the stationary nonlinear representation may be considerably more parsimonious and useful for long-term prediction. For instance, it is widely recognized that ectotherms have unimodal thermal performance curves and may respond positively or negatively to temperature depending on the temperature value - behavior that a linear model would call nonstationary. That is, changes in statistical properties (e.g. correlations) are expected behavior in stationary nonlinear systems over short time periods and do not necessarily indicate a radical change in underlying ecological dynamics. As a solution to this, many authors have suggested the use of time-varying parameters in other (parametric nonlinear) models beyond the DLM \cite{thorson_evaluating_2010} \cite{wikle_hierarchical_2003}. Given a well-vetted model structure, this approach provides a more robust means of characterizing temporal variation in dynamics. However, the additional flexibility offered by time varying parameters means that any model mis-specification could produce time-varying parameters and apparent nonstationarity. That is, structural uncertainty - linear or otherwise - remains confounded with nonstationarity. Given the ubiquity of nonlinear dynamics in ecosystems (Clark REF, other refs), a more flexible and robust framework for measuring nonstationarity is clearly needed.
+
+Empirical dynamic modeling (EDM) offers one way to flexibly model nonlinear dynamics with minimal structural assumptions \cite{munch_circumventing_2017}. EDM uses time-delay embedding to account for missing variables \cite{rand_detecting_1981} and flexible function approximation, to reconstruct the dynamics of a complex system using one or more time series\cite{deyle_tracking_2016}. The method has been used been successful for ecological forecasting in a wide range of settings (REFS). Although EDM formally applies only to stationary systems, nonstationarity can be accommodated \cite{munch_frequently_nodate}. This is typically done by either by including the driver as a covariate (i.e. by including the driver as another state variable, the system becomes stationary), or in the univariate case, by `overembedding'. Overembedding refers to the use a larger number of lags (higher embedding dimension, $E$) than would be necessary if the system were stationary. These additional lags can make up for lack of data on the driver \cite{hegger_coping_2000} \cite{stark_delay_1999}. While overembedding can allow for adequate forecasting of a nonstationary system, but it does not allow for a way to quantify nonstationarity or to even tell if a system is nonstationary. If one is picking an optimal embedding dimension for a empirical time series based on performance alone, it is difficult to know if the result is an overembedding, since this requires knowing the true value of $E$. Moreover, if the relevant driver is added as a covariate in a model that is already overembedded, the driver will appear to be irrelevant (i.e. the system will appear to be stationary) because the additional lags have already compensated for it. Fortunately, this apparent problem also suggests a solution.
+
+{This all reads very clearly}
+In this study, we introduce a modification to a widely used EDM algorithm (S-map, \cite{sugihara_nonlinear_1994}) to allow for and quantify both nonlinear and nonstationary dynamics, thus identifying systems as nonlinear, nonstationary, both, or neither, and improving predictions for nonlinear and/or nonstationary systems. S-map and DLM are both forms on local linear regression in which points are weighted by their proximity in state space or time, respectively (Deyle ref). Our method, which we call `nonstationary S-map', or NSMap, allows for weighting in both space and time. More importantly, our method assesses nonstationarity over a range of $E$ values to account for (and take advantage of) the issue of overembedding. Our key insight is that for a system that is nonstationary, as $E$ is increased, a nonstationary model will outperform a stationary model for a certain range of $E$ values, above which performance will be equivalent.
+ 
+ We first describe the methodology, then assess its performance on simulated linear and nonlinear, stationary and nonstationary timeseries with variable amounts of data and noise. We then apply the method to several empirical ecological time series from the lab and field. In addition, since it has long been recognized that the apparent nonstationarity of a systems depends strongly on timescale (REFS), we assess how the quantification of nonstationarity changes in the empirical time series when differing amounts of data are used, and starting at different time points.
+
+\textit{Intro notes}
+
+Have any meta-analyses been done on the prevalence of NS in ecological series? If so, we should cite them and comment on the methods that were used.
+
+We should try and pick the most generic references possible, preferably review papers that have been cited a lot, plus key papers in the field about NS in ecology by authors who may be reviewers, or papers that are the best example in the field of the point we are making. Google scholar search for 'nonstationarity ecology' or 'nonstationarity ecology climate change' gives a lot of papers we should cite.
+
+``In-text citations should follow the author-date method whereby the author's last name and the year of publication for the source should appear in the text, for example, (Jones, 1998). The complete reference list should appear alphabetically by name at the end of the paper."
+
+Intro scratch
+
+For example, increasing global temperatures have pushed many ecosystems into new sets of behavior \cite{baker_climate_2008}, invasive and introduced species change community composition and therefore dynamics\cite{damore_conservation_nodate}, and contemporary evolution in harvested populations can change dynamics even after fishing is stopped\cite{walsh_maladaptive_2006}. More generally, ecosystems undergo processes of ‘creative destruction’ which leads them to continuously rewire their dynamics\cite{holling_simplifying_1994}. These changes may confound forecasting because accurate information about an ecosystem at one time may be irrelevant or misleading at another.
+However, nonlinear behavior is ubiquitous in ecosystems\cite{anderson_why_2008}\cite{gratton_seasonal_2003}\cite{lima_chihuahuan_2008}.
+The fact that nonlinearity is a) widespread in ecological dynamics and b) confounded with nonstationarity in the DLM framework, suggests that previous characterizations of the prevalence of non-stationarity in ecology may be overestimates.
+As in DLM, NSMap is parameterized to measure the rate at which the dynamics are changing in order to characterize how nonstationary an ecosystem is. This will allow us to determine from time series data if climate change or some other source of nonstationarity is affecting population dynamics while avoiding the assumption that ecological dynamics are linear.
+However, since EDM uses past system behavior to make predictions, strictly speaking it assumes and requires stationarity. As a consequence, it is an open question whether EDM is appropriate to use when ecosystem dynamics are nonstationary. 
+
+\section{Methods}
+
+Methods Outline
+
+S-map and NSMap
+EDM and SMap basics.
+	ecological dynamics are sparsely observed -> time delay embedding
+	Using X and Y is an embedding dimension of 2, x_t, x_t-1, y is 3, etc.
+	function approximation
+		weighting kernel	
+	NSMap
+		extended kernel
+	However, overembedding, at a particular high embedding dimension all nonstationarity will be integrated into the state space
+	therefore, we aggregate delta across all embeddin dimensions leading up to the theoretical maximum where performance converges
+	the same can be done for theta
+done
+
+Simulation testing
+Assessing performance of NSMap versus SMap
+3 models, stationary and nonstationary
+linear
+logistic map
+hastings powell
+observation noise is added
+100 replicates for each model with random initial conditions
+forecast skill is plotted against delta
+Impact of time series length, rate of nonstationarity, process noise and observation noise strength.
+
+Empirical timeseries
+ Paramecium data?
+ Baltic Sea Mesocosm
+ Newport Line
+
+\subsection{S-map and NSMap}
+
+EDM and S-map basics ... define embedding dimension. The following paragraph can be shortened/revised.
+
+Increasing availability of large ecological datasets popularized data-driven techniques to forecast ecological behavior. Though data are more abundant than ever, ecosystems are so complex that gathering data on all features relevant to forecasting is impossible. Unobserved variables are accounted for in EDM using time delay embedding\cite{rand_detecting_1981}, which embeds the observed univariate time series in a higher dimensional space where the new dimensions act as proxies for unobserved state variables. Specifically, if the time series is denoted as $x_t$ then the E-dimensional delay-coordinate vector is $X_t=\langle x_t,x_{t-\tau}, \dots ,x_{t-\tau(E-2)}\rangle$ where each entry is a copy of the original series offset by a number of steps $\tau$ and is referred to as a “lag”. Taken's theorem shows that for sufficiently large $E$, delay vectors are in 1:1 correspondence with the true state space of the dynamical system. In all cases, the variable we are forecasting, denoted as $y_t=x_{t+1}$, is included in the embedding dimension. For example, when $E=2$ we have $X_t=x_t$.
+
+The next step is to approximate the function $y_t=f(X_t)$ that takes the current state of the system to its future state. In S-map EDM, this function $f$ is approximated using a local linear regression \cite{sugihara_nonlinear_1994}. For each point $x_{t^*}$, the weight given to point $k$ is: 
+
+\begin{gather}
+    w_k= \exp\left(-\frac{\theta||x_{t_k}-x_{t^*}||}{d}\right)
+\end{gather}
+
+where $||x||$ represents the Euclidean distance metric and $d=\frac{1}{N}\sum_{k=1}^N ||x_{t_k}-x_{t^*}||$ is the average distance amongst all points. The hyperparameter $\theta$ determines the degree of local weighting in state space. Higher weight is given to points when the system was in a similar state, regardless of then that state occurred in time. Higher values of $\theta$ indicate more localized weighting and thus more nonlinear dynamics. If $\theta=0$, all points are given equal weight and S-Map reduces to a linear autoregressive model of order $E-1$. 
+ 
+Now a linear model $C$ is fit to the weighted data points and the final prediction is $\hat{x}(t^*+1)=C_0+C\cdot X_{t*}$. The state dependence of the linear model creates continuous nonlinear function $f$ which which avoids assumptions about model structure.
+
+To allow for and quantify nonstationarity in NSMap, we propose the following modification of the S-map weighting kernel:
+
+\begin{gather} \label{eq_NSMap_weighting}
+    w_k= \exp\left(-\frac{\theta||x_{t_k}-x_{t^*}||}{d}-\delta\left(\frac{t_k-t^*}{N}\right)^2\right)
+\end{gather}
+
+The new hyperparameter $\delta\in[0,\infty)$ behaves analogously to $\theta$ except it determines weights with respect to distance in time rather than state space. When $\delta=0$, all points in time are weighted equally, and NSMap to reduces SMap. Higher values of $\delta$ indicate more localized weighting in time and thus more nonstationary dynamics. When $\theta=0$ and $\delta>0$, the model reduces to a DLM (linear functional form with parameters that change in time). The only difference is that the kernel in traditional DLM is exponential rather than squared exponential. If $\theta=\delta=0$ the model reduces to a linear autoregressive model. Thus NSMap generalizes several time series models from the literature, and allows for nonlinear, nonstationary dynamics when $\theta>0$ and $\delta>0$ (Figure).
+
+\begin{figure}
+    \centering
+    \includegraphics[width=7cm]{figures/Nonstationary_Logistic_Map.png}
+    \includegraphics[width=7cm]{figures/Nonstationary_Driver.png}
+    \includegraphics[width=14cm]{figures/Nonstationary_Logistic_Map_E_vs_lnL_and_delta.png}
+    \caption{The relative performance of SMap and NSMap depends on the embedding dimension, $E$. a) Time series for a nonstationary logistic map, $x_{t+1}=rx_t(1-x_t)$ with $r=4-t$. b) Log likelihood versus $E$ for NSMap and SMap applied to the nonstationary logistic map. NSMap outperforms SMap for $E$ values of 2 and 3, and then performance converges due to overembedding. Log likelihood declines with increasing $E$ due to data loss and the degrees of freedom penalty. c) The nonstationarity parameter (delta) for NSMap versus embedding dimension for the nonstationary logistic map. The aggregated delta is the likelihood weighted average delta across $E$ values.
+    \textbf{NOTES: remove the driver panel, do it three in a row, time series, delta, log likelihood of NS vs S. Maybe do a 6 panel figure with HP and L on different levels. Or do time series across the top of both. Show that collapse in likelihood difference takes more than one step. Mention that there is a peak because we a) run out of data and b) there is a dof penalty. We must expect the counter that we just pick E=3 and call it a day. Find really nice cases that don't have this problem.}}
+    \label{fig:my_label}
+\end{figure}
+
+Performance of NSMap for particular values of the hyperparameters $\theta$ and $\delta$ is measured by the log likelihood
+
+\begin{align}
+    \ln \mathcal{L}=-\frac{n}{2}\left(\ln\frac{\sum_i (y_i-\hat{y}_i)^2}{n-k}+\ln 2\pi+1\right)
+\end{align}
+
+$\hat{y}_i$ are the predictions of NSMap found using leave-one-out cross validation and $k$ is the estimated degrees of freedom of the model. The degrees of freedom are estimated by taking the trace of the hat matrix\cite{mccloud_calculating_2021} which is typically for local linear models. To select an optimal $\theta$ and $\delta$ rprop \cite{riedmiller_direct_1993} is used where the gradients are determined by an explicit formula derived and presented in the supplement.
+
+A naive approach to identifying nonstationarity is to chose an embedding dimension $E$ and find the optimal $\delta$. However, due to overembedding there will always exist an $E$ where the nonstationarity is completely resolved and the data are stationary. In this case, the performance of S-map and NS-map will be identical. To solve this issue, we take a weighted average of $\delta$ values across embedding dimensions starting at $E=2$ and going to some $E_{max}$ where performance converges, where the weight of each $\delta$ is determined by the relative performance of NS-map to S-map. 
+
+\begin{align}
+    \overline{\delta} &= \sum_{E=2}^{E_{max}} \delta(E) * \frac{W(E)}{W_\text{total}} \\
+    W(E) &= \exp\left(\ln\mathcal{L}_{NSMap}(E) - \ln \mathcal{L}_{SMap}(E) \right) \\
+    W_\text{total} &= \sum_{i=2}^{E_{max}} W(i)
+\end{align}
+
+where $\ln\mathcal{L}_{NSMap}$ and $\ln\mathcal{L}_{SMap}$ are the log likelihoods for NSMap and SMap and all variables are indexed by the embedding dimension. An aggregated $\theta$ value of $\overline{\theta}$ is calculated in an exactly analagous way. At lower embedding dimensions NSMap will perform better only in the nonstationary case because the fast timescale dynamics will be better resolved than the slow\cite{judd_embedding_1998}. If the nonstationary change is so rapid that no fast timescale dynamics can be accurated forecasted then the optimal model is simply the DLM, a special case of NS-map.
+
+In real ecological datasets $\tau=1$ is almost always chosen since the sampling frequency of ecological systems is typically not fine grain enough to justify a higher value. Judgement of the practitioner should be used in this choice and should always air towards higher $E_\text{max}$ since increasing it won't significantly change the ultimate measure nonstationarity.
+
+\subsection{Simulation Tests}
+
+We conducted two sets of simulation tests to assess the performance on NSMap. The first tested the ability of NSMap to differentiate stationary linear, nonstationary linear, stationary nonlinear, and nonstationary nonlinear dynamics, and improvements in identification of nonstationarity and predictive performance relative to DLM. The second tested the performance of NSMap under different degrees of nonstationarity, observation noise, process noise, and data availability. 
+
+The linear model was 2 dimensional and exhibited cyclic dynamics when stationary. Nonstationarity was introduced increasing the rate of cycles over time and adding a linear trend of magnitude 1 after generating the time series \ref{fig:model_details} (Figure). The nonlinear models we used were the single-species discrete logistic map \cite{may_necessity_1995} and the 3-species Hastings-Powell food chain model \cite{hastings_chaos_1991} model \ref{fig:model_details}. Nonstationarity in these models was generated by varying parameter $r$ and $b_1$ respectively (Table, Figure). For the Hastings-Powell model, only the producer time series $x$ was analyzed.
+
+\begin{table}[]
+    \centering
+    \begin{tabular}{m|m|m|m}
+        Model & Equation & Stationary Parameters & Nonstationary Parameters \\
+        \hline
+        Linear & \shortstack{$x_{t+1}=Ax_t+\epsilon_t$\\$A=\begin{pmatrix}\cos(\theta)&\sin(\theta)\\-\sin(\theta)&\cos(\theta)\end{pmatrix}$}  & $\theta=\pi/6$ & \shortstack{$\theta(t)=(0.5+t)*\pi/6$\\t was added to the series}\\
+        Logistic & $x_{t+1}=rx_t(1-x_t)$ & $r=3.75$& $r(t) = 4 - t$ \\
+        Hastings Powell & \shortstack{$\frac{dx}{dt} = x(1-x)-\frac{a_1xy}{1+b_1x}$\\ $\frac{dy}{dt} = \frac{a_1xy}{1+b_1x}-d_1y-\frac{a_2yz}{1+b_2y}$\\$\frac{dz}{dt} = \frac{a_2yz}{1+b_2y} -d_2z$} & \shortstack{$a_1=5$\\$a_2=0.1$\\$b_1=3$\\$b_2=2$\\$d_1=0.4$\\$d_2=0.01$} &\shortstack{$a_1=5$\\$a_2=0.1$\\$b_1(t)=3+3t$\\$b_2=2$\\$d_1=0.4$\\$d_2=0.01$}\\
+    \end{tabular}
+    \caption{Caption}
+    \label{fig:model_details}
+\end{table}
+
+\textbf{Put all the model equations, parameters, etc in a table and just refer to that}
+
+To test the ability of NSMap to differentiate dynamics, we generated 100 stationary and 100 nonstationary time series for each of the above models, and obtained $\overline{\delta}$ and $\overline{\theta}$ for each. To measure forecast skill, the $r^2$ between leave-one-out forecasted next step abundance and true next step abundance was calculated. To compare nonstationarity classification and forecast performance using DLM, an NSMap instance was fit with $\theta$ fixed to 0, which forces a linear model structure. All time series were 200 datapoints long with additive Gaussian observation noise $\epsilon_t\sim0.1\mathcal{N}(0,0.1v)$ where $v$ is an empirical estimate of the standard deviation of these series when stationary.
+
+Similar experiments were carried out to assess the impact of observation noise, process noise, time series length and rate of nonstationary change. In addition to the existing nonstationary version of the Hastings Powell and Logistic Map, versions with slower rates of parameter change are assessed, as more subtle changes in dynamics due to nonstationarity are likely more challenging to identify. The parameter changes for these slow version are $r(t)=4-0.25t$ and $b_1(t)=3+t$. For each model, we assessed time series of length 50 and 200, observation noise levels of 0.0,0.1,0.2,0.3, and with the presence or absence of process noise. Process noise was multiplicative lognormal for both models with variances determined empirically such that the variance of an average series increased by 10%.
+
+Hastings Powell equations were integrated using the scipy package odeint. The total integration time was 600 and the system was integrated for 512 time units before with fixed parameters to remove transients. In between values in the final time series, the system was integrated for 64 intermediate steps to ensure numerical stability. Process noise was multiplicative lognormal $e^{\mathcal{N}(0,\sigma)}$ where $\sigma=0.0017$ was chosen because it increased the total variance by $10\%$. Initial conditions were drawn at random from $x_0=[0.1,0.4,9]+[\mathcal{U}(0,1),\mathcal{U}(0,1),\mathcal{U}(0,1)]$. Only the time series of the lowest trophic level species $x$ variable was retained.
+
+\subsection{Empirical Timeseries}
+
+We next applied NSMap to several empirical ecological time series. First we applied the technique to time series from a plankton system in laboratory conditions which is known to be stationary. The time series tracks population count of Paramecium aurelia and Didinium nasutum undergoing stable predator prey cycles (Veilleux).
+
+Data from the Baltic Sea mesocosm \cite{heerkloss_long-term_1998}\cite{beninca_chaos_2008} were analyzed for nonstationarity. The experimenters maintained an 18 gallon (this should be in liters) drum of water pulled from the Baltic Sea and recorded biweekly abundances of the microorganisms inside. The environmental conditions were kept mostly constant except for changes in the carbonate buffering system which caused fluctuations in the pH during the latter half of the series and the periods of light exposure were increased from 12 to 16 hours a day and then left on at all times near the ends of the series\cite{heerkloss_long-term_1998}. The time series exhibits nonstationarity in the statistical sense as the mean and variance of several of the series change dramatically over long timescales. We assessed the time series for Rotifers and Picophytoplankton, which are predator and prey respectively (Which species were used???).
+
+Plankton time series from an ocean station were also assessed. Plankton were captured from a small boat which trawled the surface of the ocean, then plankton abundances in the sample were determined (Info on how the data were collected). Other papers (cite) have found evidence for nonstationarity in these data, specifically related to an anomalously large marine heatwave that occurred in in 2014-2016. Data were collected roughly biweekly for 26 years, but were averaged to a monthly time series to reduce the number of missing values. As the cross-correlation among all life stages for a given species was highest at lag 0, all life stages for a given species were summed together. The copepod \textit{Pseudocalanus (insert species name)} was selected for analysis as it was the most abundant species. \textit{Pseudocalanus (insert species name)} is (insert some info about its biology/ecology).
+
+{This statement is true but we haven't yet detailed why it depends on the window of observation. We will go over it in the supplement, but we haven't justified it yet here. }
+Nonstationarity assessment depends on both the rate of internal change in a system and the time window of observation. To assess the impact of time series length and starting time on nonstationarity identification, we applied NSMap to subsets of the empirical time series starting at each year in the time series for which there was sufficient subsequent data. We performed this analysis for the Baltic sea mesocosm and Newport line time series.
+
+
+Methods scratch
+
+\textit{Debra Lewis noted that this section sounds a bit pompous because we assume that people using SMap haven't realized that by increasing the embedding dimension that the nonstationarity will be accounted for. She thinks the overembedding idea is trivial and easy to see. The distinction I think is real though, and we should try to spell out why it is surprising that this works. Really, the timescale of observation being much slower SHOULD fuck up our ability to reconstruct it because the optimal lag to reconstruct it better is much further back. It is kind of surprising that overembedding might work. Also Taken's assumes stationarity in dynamics, so the moments of the distribution should converge given more observation time. However in time dependent systems this convergence may never occur. In this way, nonstationarity is not just another state variable. }
+
+Demonstration on Single Simulated Time Series
+Real ecological time series are short and noisy so to evaluate the success of our method we produce simulated time series that reflect this. The series range in length from 64, 128 and 256 steps long and have uniformly distributed process noise which is governed by $\alpha=0.0, 0.1,0.25$ where the noise is sampled $e_t \sim U(-aR/2, aR/2)$ where $R=\max_{t\in T} x_t-\min_{t\in T} x_t$ of the series in question. We chose as a discrete model the Logistic Map\cite{may_necessity_1995}, as a continuous model the Hastings Powell system\cite{hastings_chaos_1991}.
+
+Overembedding
+Though SMap assumes stationarity it has been successfully employed to forecast real ecosystems, many of which must be nonstationary, an apparent contradiction between theory and practice. The reason SMap in its original formulation appears to work in nonstationary systems is "overembedding" which is the practice of choosing a higher embedding dimension $E$ than one would if the system were stationary to capture the non-stationary portion of the dynamics. There are many ways to see how increasing the embedding dimension would account for nonstationarity; an argument provided by \cite{hegger_coping_2000} shows that in many cases one can closely approximate the time series of a slowly changing driving variable given enough lags of the observation time series. This means there is no unaccounted for time dependence so SMap can be safely used. This has also been demonstrated formally by \cite{stark_delay_1999} which shows under mild technical assumptions that given two dynamical systems where one unidirectionally forces the other, time delay embedding of a time series from the forced system alone is sufficient to reconstruct the state space of the forced and forcing systems together. This amounts to reconstructing a higher dimensional state space than that of the forced system alone which demands a larger embedding dimension. It is likely that practitioners of SMap have been overembedding unknowingly simply by choosing an embedding dimension that optimizes forecast accuracy.
+
+Overembedding elegantly generalizes SMap to the nonstationary case, but it doesn't provide a way of quantifying nonstationarity. Given time series data on a real nonstationary ecosystem there is no clear way to determine the optimal embedding dimension if it were stationary. Thus NSMap expands SMap using the aforementioned forgetting approach by allowing the model parameters to shift with time. NSMap is the same as SMap except for the modified weighting function
+
+If forecasting performance on particular time series is optimized by $\delta=0$ this indicates the system is stationary, if $\delta>0$ the system is nonstationary and the magnitude of $\delta$ corresponds to the size of the neighborhood of points in time which are dynamically relevant; this is a measure of the systems nonstationarity. 
+
+\section{Results}
+
+Simulation Results
+Found that NSMap could successfully distinguish between stationary and nonstationary time series
+NSMap constrained to be linear could distinguish between stationary and nonstationary for the linear system, but performed less well on the nonlinear systems.
+Forecast accuracy was greatly reduced for linear systems as well.
+As expected, performance was degraded for series with high degrees of observation noise, process noise which are short.
+
+Empirical timeseries
+Baltic Sea Mesocosm Results
+Newport Results
+The series as a whole was not nonstationary, however subseries were nonstationary.
+The series was marked nonstationary whenever the segment from 2014-2016 was included.
+This indicates that the dynamics are roughly stationary outside of this period, as was predicted.
+
+\subsection{Simulation Results}
+
+NSMap was able to successfully distinguish between stationary and nonstationary simulated time series. Almost all nonstationary models had $\overline{\delta}$ values significantly above 0 and most stationary models rested on $\overline{\delta}=0$. The DLM had many more false negative nonstationarity identifications. Further, NSMap produced accurate predictions for all models considered, while the DLM predicted poorly on nonlinear systems.
+ 
+\begin{figure}
+    \centering
+    \includegraphics[width=10cm]{figures/round1_of_simulations.png}
+    \caption{Results for 100 replicates of Linear, Logistic and Hastings Powell time series which were stationary or nonstationary. Most stationary time series sit on the $\delta=0$ line and all nonstationary series are above it. Further, many nonstationary and nonstationary Linear time series rest on the $\theta=0$ line, with the exception of a large collection of stationary linear series. This is because at an embedding dimension of 2 the attractor is not resolved accurately so a nonlinear function was learned erroneously.  }
+    \label{fig:round1}
+\end{figure}
+
+The impact of decreased time series length and increased observation or process noise negatively depended on the underlying model. Nonstationarity was identified accurately for the Logistic Map and was robust to short time series, process noise, observation noise and slow nonstationary change. Performance for the Hastings Powell system was much weaker in general. For short time series, the method frequently missed nonstationarity, and when the nonstationary change was slow both observation and process noise hampered performance. However, performance was strong when the rate of nonstationarity was high. Overall, the Hastings Powell model proved more challenging than the Logistic map because the dynamics are more complicated so more data is required to resolve them. This suggests that forecast skill should be high for nonstationarity to be correctly identified {to justify this we need to investigate the average r^2 for each simulation set. Perhaps we should provide an explicit r^2 cutoff to stop dumb ecologists from applying this to terrible time series}.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=10cm]{figures/round2_simulations.png}
+    \caption{This figure demonstrates the impact of time series length, process noise and observation noise on identification of nonstationarity in the Logistic and Hastings Powell models. The numbers represent the proportion of 100 replcates which were correctly identified as stationary or nonstationary. None, slow and fast correspond to different rates of nonstationary change. }
+    \label{fig:round2}
+\end{figure}
+
+\subsection{Empirical Timeseries}
+
+Paramecium Didinium
+
+We found that both the Paramecium and Didinium time series were identified as stationary, agreeing with our predictions.
+
+Baltic Sea Mesocosm
+
+We find that these series are nonstationarity, an initially surprising results given their isolation from the environment. The original experiment ran for 8 and a half years and the stationary windows uncovered are 3.36 years long for Calanoids, infinitely long for Rotifiers, 4.10 years for Nanophytoplankton and 3.64 years for Picophytoplankton. Further, the prediction skill was excellent for these series with forecast skills of $0.93, 0.89, 0.66$, and $0.77$ respectively.
+
+The fact that an ecosystem in a nearly constant environment can exhibit nonstationarity should not be surprising when endogenous sources of nonstationarity are considered. Zooplankton have short generation times so the time scale of evolution is fast and could cause appreciable differences in the dynamics over the 8.5 years of observation. Further, a wavelet analysis found that the predator prey dynamics of picocyanobacteria and rotifiers went through a contiguous ~700 day long period of close synchrony in population oscillations, but fell out of synchrony and into chaos outside of this period\cite{beninca_coupled_2009}. A similar pattern emerged for the other predator prey pair of picocyanobacteria and calanoids except their window of synchrony lasted only ~300 days. This suggests that the dynamics underwent long "epochs", or periods of roughly constant dynamics which changed slowly with time. These agree roughly with the estimated stationary windows. This demonstrates that external driving parameters are not necessary for a system to be nonstationary.
+
+\begin{table}[]\label{table_baltic_sea}
+    \centering
+    \begin{tabular}{c|c|c|c}
+        Time Series & $w_s$ & $r^2$ \\
+        \hline
+        \includegraphics[width=4cm]{figures/picophytoplankton.png} & $3.64$ years& $0.772$ \\
+        \includegraphics[width=4cm]{figures/rotifers.png} & $\infty$ years & $0.860$\\
+        \includegraphics[width=4cm]{figures/nanophytoplankton.png} & $4.10$ years & $0.660$\\
+        \includegraphics[width=4cm]{figures/calanoids.png} & $3.36$ years & $0.931$\\
+    \end{tabular}
+    \caption{Each included time series from the mesocosm alongside its stationary window length, $\delta_\text{agg}$ and forecast skill $r^2$.}
+    \label{tab:my_label}
+\end{table}
+
+Newport Line
+
+\includegraphics[width=10cm]{figures/pseudocalanus_different_lengths.png}
+
+Our analysis found that any relatively short subseries which contained the anomalous 2014-2016 heave wave event was nonstationary while subseries not containing the event were stationary. This is in agreement with expectations. Longer series which contain the anomalous region have lower delta values than shorter series with the anomalous region because in longer series these deviations from normal dynamics tend to "average out". This demonstrates explicitly that the nonstationarity of a series depends on the time window of observation.
+
+\section{Discussion}
+
+Discussion
+Restatement of purpose
+Summary of results
+This works for a wider range of systems than DLM
+Caveats
+clearly it works better in some cases than others
+delta value is not comparable across time series
+Stochastic
+Stark 2003 and 2001 extends to stochastic systems
+McSomething 2004 shows stochastic system
+but don’t mention yet, wait for reviewers to ask for it
+It’s not going to work for super high dimensional, noisely or otherwise shitty systems short time series also
+This detects changes in the conditional expectation, not the conditional variance.
+If the data are completely random, the mean is fixed, and the standard deviation with additive process noise is increasing, we will not detect that as nonstationary. However, this could fixed by assuming non-constant variance in the log-likelihood function.
+Interpreting the results
+assessment of nonstationarity depends alot on window length
+As illustrated in the Newport line, the degree of nonstationarity depends strongly on the available windows of time. This motivates a new operational definition of nonstationarity. We join Schreiber in asserting that…
+Look at Schreiber’s paper again, see if he actually comes up with a metric
+Our method is a continuous generalization of Schreiber’s metric which allows for much shorter time series (maybe mention this in the intro as  part of a handful of proposed approaches).
+Future directions
+The issues of comparability could be resolved by control for recurrence time using generation time
+Pithy closing paragraph with something grandiose
+
+Nonstationarity is a confounding problem to ecological modelers and forecasters. One tack to solve is problem is to introduce time varying coefficients to linear models, however the unrealistic modeling assumption of linearity can cause poor forecast skill and incorrect identification of nonstationarity. Other techniques which forecast one chunk of the series using data from another avoid this issue, but is sensitive to choice of chunk size and overall forecast skill is compromised. Our technique may be seen as a continuous generalization of the afformentioned method, and is able to identify nonstationarity without rigid structural assumption and without compromising forecast skill.
+
+We found the method successfully identified nonstationarity in a collection of classic ecological models and provided strong forecasts. NSMap detected nonstationarity more accurately and produced stronger forecasts than the DLM, which is historically used to identify nonstationarity. We then applied it to several empirical lab and field ecological time series. The first was a simple laboratory predator-prey system of Paramecium and Didinium, which we found was stationary. Next the method was applied to plankton data from the Baltic Sea Mesocosm, a long running laboratory experiment where abundances of many plankton species were measured every two weeks. These data were identified as nonstationary in agreement with previous work that identified epochs in predator prey cycles using a wavelet analysis. Finally, a field time series of abundance of Pseudocalanus off the Northern California Coasts was assessed for nonstationarity. This seres is interesting because there was an anomalous heat event which occurred from 2014-2016 which signficiantly impacted Pseudocalanus dynamics. By systematically assessing the nonstationarity of subsequences of this series with different lengths and starting years, we found that series which contained the anomalous period were identified as nonstationarity, while those which did not contain it were stationary. 
+
+This method is an improvement over previous techniques, however has limitations. The method is designed to identify nonstationarity arising from slow, monotonic changes in some underlying variables. If the nonstationary change is abrupt, ie the data can be split cleanly into two regimes of behavior, then the success of the method is uncertain. A better technique in this case is to use data from one regime to produce forecasts for the other to see if the system has changed. The method is able to identify nonstationarity in the conditional expectation but not the conditional variance, which means if nonstationarity manifests only in changes to the variance our technique will not be able to identify it. As an example, generate a time series as a sequence of draws from a normal distribution centered at 0 where the variances increases with time. This system, though clearly nonstationarity, will not be identified as such by our method. However, this limitation may be repaired by estimating the variance locally in time as well as the expectation. Further, underlying complexity of the dynamics can negatively impact nonstationarity identification, as evidenced by the relative weakness of the method applied to the Hastings Powell over the Logistic Map. A high dimensional attractor necessitate proportionally more data. Finally, this method requires relatively high quality data, as short time series length and noise \cite{johnson_empirical_2022}\cite{munch_circumventing_2017}\cite{perretti_model-free_2013} may confound results.
+
+This technique gives insights to the nature of nonstationarity in an ecological context. The way this term is employed by ecologists is informed by but not identical to the definition used by statisticians. As evidenced by the Newport Line example, the availability of data strongly impacts whether a system's behavior is nonstationary or not. If only the 3 years leading up to the anomalous event was available, the system would be strongly nonstationary, but given all the available data, the time series as a whole does not appear to be. This point is further illuminated by considering seasonality. Is seasonal change nonstationary? It arises due to celestial dynamics and is clearly exogenous to the ecosystem. Further, if an ecologist knew nothing about seasonality and began gathering daily abundance data of an organism, the changes in dynamics due to seasonality would appear nonstationary. However, since seasonal changes are regular and well understood we do not hesitate to call a system only impacted by seasonality stationary. However, our imagined ecologist could only come to this conclusion after observing enough seasons to understand its effect. Therefore, we join Screiber in asserting that “a signal stationary if anything which changes in time (no matter if we call it a variable or a parameter) does so on a time scale such that the changes average out over times much smaller than the duration of the measurement” \cite{schreiber_detecting_1997}.
+
+The method could be extended in many ways. One limitation is the assumption of a constant kernel, instead a heirarchical collection of time dependent kernels could be used to generate more fine grain time dependence. Another goal is to use this technique in a meta-analysis context to get a broad estimate of how many ecological time series exhibit nonstationarity overall. The method could be used in this context, however $\overline{\delta}$ values are not going to be directly comparable between systems. One is tempted claim that an ecosystem with a higher $\overline{\delta}$ value than another is undergoing nonstationary change at a faster rate, however details of the dynamics like average recurrence time impact $\overline{\delta}$. This can be clearly seen in the Hastings Powell case, as more data is required to reconstruct the attractor faithfully than for the Logistic Map so $\overline{\delta}$ is much lower on the whole. Extensions to the method which account for details such as this may allow for direct comparisons of nonstationary change rates between systems.
+
+This method shows that nonstationarity is a surmountable problem in ecological modeling and forecasting.
+
+Discussion Scratch
+
+It has long been recognized that the apparent nonstationarity of a systems depends strongly on timescale (REFS). For instance, temperature from January to August in a single year will look highly nonstationary, but may appear stationary over several years, nonstationary again over several centuries, and stationary again over geologic time. Clearly, characterization of nonstationarity is conditional on timescale.
+
+In the midst of a changing climate, nonstationarity is an especially urgent problem for ecological modeling. It is frequently unclear whether complexity in an ecological process comes from high dimensionality, stochasticity or nonstationarity. This is especially confounding because nonst
+
+There are several competing views about what nonstationarity means in ecology. In statistics, nonstationarity merely means nonconstancy in the mean or variance(or higher statistical moments) over time. Ecologists often use ‘nonstationarity’ to indicate that an ecosystem is driven by an exogenous force, which is known as time-inhomogeneity in the statistical literature. But clearly some exogenous changes are stationary as long as the timescale of the organisms under investigation is long enough. For example, we would consider the effects of Milankovitch cycles to be nonstationary because they occur over a timescale of thousands of years while our ecological observations take place at most over decades. But if one were to record population data over tens of thousands of years the effects of Milankovitch cycles would be accounted for in the data so it becomes stationary again(assuming all other aspects of the ecosystem remain constant).{This is overcomplicating things I think}. Further, systems without any exogenous forcing can exhibit what appears to be nonstationarity, such as extremely high dimensional systems or intermittently chaotic ecosystems, which undergo periods of chaos and periods of stability\cite{wysham_sudden_2008}. 
+
+Further, many ecologists make nonstationary data stationary simply by detrending the time series or by taking rolling window averages. This is motivated on the statistical notion of nonstationarity and simple examples where the different timescales of dynamics are separable in this fashion. An example that works is the time series of temperature over the past 100 years which fluctuates seasonally and increases monotonically due to climate change. In this case taking a rolling windowed average recovers the monotonic trend and detrending recovers the seasonal component. This works when the different timescales are not dynamically coupled, however this is not the norm ecologically. NSMap is designed to detect nonstationarity even when the different time scales are dynamically coupled.
+
+In light of this, we conclude that nonstationarity in the sense used by ecologists is not inherent to the system but a feature of the timescale of observation. \cite{schreiber_detecting_1997} summarizes this as “a signal stationary if anything which changes in time (no matter if we call it a variable or a parameter) does so on a time scale such that the changes average out over times much smaller than the duration of the measurement”. Here “average out” is used imprecisely, and can mean literally taking a rolling average(in the case of statistical nonstationarity), reconstructing the attractor of an ecosystem(EDM’s approach), or other techniques.
+
+As with all data driven techniques, the success of NSMap is contingent on the length and quality of the time series. We have demonstrated that the method works well on simulated time series, but caution against attempting to evaluate the stationarity of series that are much shorter. Noisy data sets will also in general require longer time series to produce accurate results \cite{johnson_empirical_2022}\cite{munch_circumventing_2017}\cite{perretti_model-free_2013}. See the supplement for more in depth coverage of the effects of observation noise on identification of nonstationarity.
+
+Several immediate extensions to NSMap are possible that can tailor its performance to particular time series. One extension is to allow the rate of nonstationarity to be non-constant with time(perhaps a higher polynomial) as the rate of change of the dynamic function needn’t be constant. This could be useful in ecosystems where the assumption of a uniformly slowly changing dynamic function is violated. Further, the current method detects nonstationarity in the mean of step ahead forecasts but not the variance or any higher moments. This is because the log-likelihood function assumes constant prediction variance over the whole series, and could be repaired by estimating forecast variances locally in time as well.
+
+
+\section{Conclusion}
+Nonstationarity poses challenges for ecological modeling and forecasting efforts. It is difficult to define and operationalize; our interpretation is that nonstationarity is present when features of the time series fail to “average out” over the course of observation. This means nonstationarity is contingent upon the timescales of dynamics and observation, and even exogenous forces that undoubtedly affect an ecosystem’s dynamics can be stationary if the timescale of their fluctuations is close enough to the observed dynamics. Further, briefly observed or extremely complex stationary systems can give the impression of being nonstationary simply because in both cases the data are insufficient. Critically, NSMap does not provide a reliable indication of non-stationarity when the prediction accuracy is low.
+Previous approaches of measuring nonstationarity make overly restrictive structural assumptions such as functional linearity which can lead these models to incorrectly attribute nonstationarity to nonlinear dynamics. NSMap is built off of SMap, a modeling technique that avoids these structural assumptions, and unlike SMap explicitly accommodates nonstationarity. This is done by allowing the dynamic function it approximates to vary with time. NSMap also has autoregressive and dynamic linear models as special cases so if the system is best modeled linearly then NSMap will do so. NSMap improved predictions in simulated and real nonstationary situations and did not improve predictions in stationary instances, suggesting that increased performance of NSMap is an indicator of nonstationarity in a system. In both simulated and real life nonstationary time series NSMap both performed better and did so with less model complexity than SMap. This indicates that allowing the estimated dynamic function to vary with continuously time is a worthwhile approach to addressing nonstationarity. These results show that nonstationarity is not an insurmountable obstacle to ecological research.
+
+\section*{Acknowledgments}
+
+Funding sources and anyone who provided feedback on the draft should go here.
+
+\section*{Conflict of Interest Statement}
+
+The authors declare no conflict of interest.
+
+\section*{Author contributions}
+
+Example: [Name of author 1] and [Name of author 2] conceived the ideas and designed methodology; [Name of author 1] and [Name of author 3] collected the data; [Name of author 2] and [Name of author 4] analysed the data; [Name of author 1] and [Name of author 4] led the writing of the manuscript. All authors contributed critically to the drafts and gave final approval for publication.
+
+\section*{Data and code availability}
+
+No new data were used. Sources of the empirical datasets used are cited herein. Code for the simulations and analysis can be found at (insert URL).
+
+\bibliographystyle{alpha}
+\bibliography{references}
+
+\newpage
+
+\section*{Supporting Information}
+
+\subsection{NSMap in more detail}
+
+Given a time series $x_t$ the time delay embedding vector is $X_t=\langle x_t,x_{t-\tau}, \dots ,x_{t-\tau(E-1)}\rangle$ and will be used to forecast $y_t=x_{t+1}$, so we will find a function that approximates $y_t=f(X_t)$. In matrix notation the time series is a vector $\bm{x}$ and the set of delay coordinate vectors $\bm{X}$. We denote the prediction of NSMap as $\hat{y}_t=f(x_t)$ as opposed to the true next value $y_t$. NSMap is fundamentally a local linear regression scheme so a distinct linear model will be fit at each point in state space $X_{t^*}\in\mathbb{R}^{E-1}$ and at each point in time $t^*\in\mathbb{R}$. This mandates a weighting function which determines the neighborhood of points in space and time which play a role in this linear regression. As previously mentioned this function is 
+
+\[w_t(X_{t^*}, t^*) = \exp\left(-\frac{\theta||X_k-X_{t^*}||}{d}-\delta\left(\frac{t_k-t^*}{N}\right)^2\right)\]
+
+where the $t$ indexes the weight of a particular $X_t$. The diagonal matrix over all $t$ is referred to as $\bm{W}$. The forecast for NSMap $\hat{y}_{t^*}$ from the point $(X_{t^*},t^*)$ is 
+
+\begin{align}
+    \hat{y}_{t^*}=X_{t^*}\left(\bm{X}^T\bm{W}_{t^*}\bm{X}\right)^{-1}\bm{X}^T\bm{W}_{t^*}\bm{Y}. 
+\end{align}
+
+\textbf{TODO: elaborate, why is this true? Also perhaps include details about how this implemented in python.}
+
+\subsection{The Likelihood Function}
+
+ To construct the log likelihood function for NSMap we assume that the deviations from NSMap's predictions are independent and normally distributed with mean 0 and standard deviation $\sigma$. The value for $\sigma$ is unknown and must be estimated from the data, which is done simply by maximizing likelihood. 
+
+The most general formulation of the likelihood function $P(D|H)$ which represents the probability of the data $D$ given our hypothesis $H$ about how it is constructed. In this case $D$ is the residuals and our hypothesis is the parameters of the normal distribution which is just $\sigma$ in this case. By independence this can be rewritten as $P(D|H)=\prod_{i=1}^nP(y_i-\hat{y}_i|\sigma)$. The likelihood function for a normal distribution with mean 0 is 
+
+\[\frac{1}{\sigma \sqrt{2\pi}}\exp\left(\frac{-(y-\hat{y})^2}{2\sigma^2}\right)\]
+
+which we plug in to find
+
+\begin{align*}
+    P(D | H) &= \prod_{i=1}^n \frac{1}{\sigma \sqrt{2\pi}}\exp\left(\frac{-(y_i-\hat{y}_i)^2}{2\sigma^2}\right)
+\end{align*}.
+
+It is more computationally convenient to work with the logarithm of the likelihood function, which is  
+
+\begin{align}
+    \ln\mathcal{L} &= \sum_{i=1}^n \ln\left(\frac{1}{\sigma \sqrt{2\pi}}\right)-\left(\frac{(y_i-\hat{y}_i)^2}{2\sigma^2}\right)\\
+    &= -n \ln(\sigma \sqrt{2\pi})-\frac{1}{2\sigma^2}\sum_{i=1}^n(y_i-\hat{y}_i)^2 \\
+    &= -n \ln\sigma-\frac{n}{2}\log(2\pi)-\frac{1}{2\sigma^2}\sum_{i=1}^n(y_i-\hat{y}_i)^2.
+\end{align}
+
+To maximize this likelihood we simply take the partial derivative with respect to $\sigma$ and find the roots
+
+\begin{align}
+    \frac{\partial \ln\mathcal{L}}{\partial \sigma} &= \frac{1}{\sigma^3}\sum_{i=1}^n(y_i-\hat{y}_i)^2-\frac{n}{\sigma} \\
+    0 &= \frac{1}{\sigma^3}\sum_{i=1}^n(y_i-\hat{y}_i)^2-\frac{n}{\sigma} \\
+    \sigma^2 &= \frac{\sum_{i=1}^n(y_i-\hat{y}_i)^2}{n}
+\end{align}
+
+which one can verify is a maximum since the second derivative is negative. Plugging in we get our close to final expression 
+
+\begin{align}
+    \ln \mathcal{L}=-\frac{n}{2}\left(\ln\frac{\sum_i (y_i-\hat{y}_i)^2}{n}+\ln 2\pi+1\right)
+\end{align}
+
+but we need to subtract $k$ from $n$ to represent the degrees of freedom of the model, like so
+
+\begin{align}
+    \ln \mathcal{L}=-\frac{n}{2}\left(\ln\frac{\sum_i (y_i-\hat{y}_i)^2}{n-k}+\ln 2\pi+1\right).
+\end{align}
+This is important because it is easy to overfit when employing a local linear model like NSMap - as $\theta$ gets very large the degrees of freedom in the model approaches $n$, the number of datapoints in the time series. In the limit this means the predictions for each time series entry are completely independent which allows for a perfect fit in the training dataset but poor performance outside of it. By introducing the degrees of freedom term we explicitly account for this and thus prefer simpler models over more complex ones(ie lower $\theta$ and $\delta$ values). \textit{Note to Steve: where does $k$ come into the derivation? I feel like this argument is not sufficiently formal, please assist!}
+
+This still leaves some questions, namely how are residuals and the degrees of freedom $k$ determined? The residuals are found via leave one out cross validation which means when we produce the $i$th residual $y-\hat{y}_i$ we remove $X_i$ and $y_i$ from the training dataset. Henceforth $\bm{X}$ and $\bm{Y}$ with the $i$th row removed will be referred to as $\overset{L}{\bm{X}}_i$ and $\overset{L}{\bm{Y}}_i$. Care must also be taken in the set of $y_i$ over which the residuals are calculated because the set will change size as $E$ is varied. In \autoref{tab:Embedding_table} the embedding matrix for a 6 entry long time series is shown for $E=2,3,4$. The number of complete state space-target value pairs decreases as $E$ increases so the number of residuals evaluated changes with $E$. This is problematic because if the term $\ln\frac{\sum_i y_i-\hat{y}_i}{n-k}$ remains approximately fixed as $E$ changes then the log likelihood will increase artificially with higher $E$ since $n$ will decrease. Thus the set of target values for $\bm{Y}$ is chosen by the embedding for $E_\text{max}$ and all embedding dimensions $E<E_\text{max}$ are evaluated over the same targets.
+
+\begin{table}[]
+    \centering
+    \begin{tabular}{c|c}
+        Y & X \\
+        $x_1$ & \\
+        \hline 
+        $x_2$ & $x_1$ \\
+        $x_3$ & $x_2$ \\
+        $x_4$ & $x_3$ \\
+        $x_5$ & $x_4$ \\
+        $x_6$ & $x_5$ \\
+        \hline
+         & $x_6$ \\
+         &\\
+         &\\
+    \end{tabular}
+    \quad
+    \begin{tabular}{c|c c}
+        Y & X & \\
+        $x_1$ & & \\
+        $x_2$ & $x_1$ &  \\
+        \hline
+        $x_3$ & $x_2$ & $x_1$ \\
+        $x_4$ & $x_3$ & $x_2$ \\
+        $x_5$ & $x_4$ & $x_3$ \\
+        $x_6$ & $x_5$ & $x_4$ \\
+        \hline
+         & $x_6$ & $x_5$ \\
+         & & $x_6$ \\
+         &&\\
+    \end{tabular}
+    \quad
+    \begin{tabular}{c|c c c}
+        Y & X & \\
+        $x_1$ & & \\
+        $x_2$ & $x_1$ &  \\
+        $x_3$ & $x_2$ & $x_1$ & \\
+        \hline
+        $x_4$ & $x_3$ & $x_2$ & $x_1$\\
+        $x_5$ & $x_4$ & $x_3$ & $x_2$\\
+        $x_6$ & $x_5$ & $x_4$ & $x_3$\\
+        \hline
+         & $x_6$ & $x_5$ & $x_4$\\
+         & & $x_6$ & $x_5$\\
+         & & & $x_6$\\
+    \end{tabular}
+    \caption{Embedding dimensions of 2, 3 and 4 for a time series of length 6. As $E$ increases the number of columns in the $\bm{X}$ increases but in turn the total number of $X_i, Y_i$ pairs decreases. Since the performance of NSMap is considered across a range of $E$ values the number of residuals $y_i-\hat{y}_i$ will change with $E$. This is problematic because the log-likelihood function increases as $n$ decreases holding the average of the residuals and degrees of freedom equal. Thus the residuals must be evaluated over the set of valid $y_{i}$ in the maximum embedding dimension. In this toy example where $E_\text{max}=4$ this means $\{x_4, x_5, x_6\}$ are the $y$'s over which the performance is determined for $E\in\{2,3,4\}$. }
+    \label{tab:Embedding_table}
+\end{table}
+
+The degrees of freedom is determined by the trace of the hat matrix. The hat matrix is the matrix which takes the training labels to the corresponding forecasts $\bm{\hat{Y}}=\bm{HY}$(so named because it puts a "hat" on the matrix $\bm{Y}$). Since a unique set of weights is used for each point in the state space it isn't possible to find the hat matrix all at once, instead it must be calculated row by row. The expression for the $i$th hat vector is
+
+\begin{align} \label{eq_hat_vector}
+    h_i=X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\bm{W}_i.
+\end{align}
+
+Interestingly, when computing the hat vector the $i$th row is not removed from $\bm{X}$ and $\bm{Y}$ like is done when determining the residuals. To see why this is the case think about $\hat{y}_i$ as a linear combination of the elements in $\bm{Y}$ each multiplied by their respective $h_i$. In the case where $\theta$ is extremely large $X_i$ will receive a weight of 1 and all other points will get weight 0. Thus the $i$th entry of $h_i$ will be one and the rest will be 0. Now the trace of the hat matrix is clearly $n$. If $X_i$ was removed this argument wouldn't work. \textit{This is another heuristic argument but is how I justified not using leave one out when computing the degrees of freedom to myself. Is this necessary or should we just cut the explanation?}
+
+\subsection{Gradient Calculation}
+
+The optimal values of $\theta$ and $\delta$ are found using the gradient descent algorithm rprop. This necessitates computation of the partial derivatives of the log likelihood function with respect to $\theta$ and $\delta$. Here the expression for the gradient is explicitly derived.
+
+Let $S = \sum_i y_i-\hat{y}_i$ be the sum of squared errors. We take the partial derivative of the log likelihood function with respect to $\theta$ first, but the derivation for $\delta$ is exactly analogous until the very end. We have
+
+\begin{align}
+    \frac{\partial }{\partial\theta}\ln \mathcal{L}&=\frac{\partial }{\partial\theta}\left[-\left(\frac{n}{2}\right)\left(\ln\left(\frac{S}{n-k}\right)+\ln(2\pi)+1\right)\right] \\
+    &=-\left(\frac{n}{2}\right)\left(\frac{n-k}{S}\right)\frac{\partial }{\partial\theta}\left(\frac{S}{n-k}\right)\\
+    &=-\left(\frac{n}{2}\right)\left(\frac{n-k}{S}\right)\frac{\partial }{\partial\theta}\left[\frac{S}{n-k}\right]\\
+    &=-\left(\frac{n}{2}\right)\left(\frac{n-k}{S}\right)\left[\frac{\frac{\partial S}{\partial\theta}(n-k)+S\frac{\partial k}{\partial\theta}}{(n-k)^2}\right]\\
+    &=-\left(\frac{n}{2}\right)\left[\frac{\partial S}{\partial\theta}\frac{1}{S}+\frac{\partial k}{\partial\theta}\frac{1}{n-k}\right]
+\end{align}
+
+which only depends on the derivatives of $S$ and $k$. These are
+
+\begin{align}
+    \frac{\partial S}{\partial \theta} &= \sum_i \frac{\partial}{\partial \theta}(y_i-\hat{y}_i)^2 \\
+    \frac{\partial S}{\partial \theta} &= -\sum_i 2(y_i-\hat{y}_i)\frac{\partial\hat{y}_i}{\partial \theta}
+\end{align}
+
+and 
+
+\begin{align}
+    \frac{\partial k}{\partial \theta} &= \frac{\partial}{\partial \theta} \tr(\bm{H})\\
+    &=\sum_i \frac{\partial }{\partial \theta}h_{ii}\\
+\end{align}
+
+where $h_{ii}$ denotes the $i$th scalar in the $i$th hat matrix row $h_i$. By \autoref{eq_hat_vector} we have
+
+\begin{align}
+    \frac{\partial h_i}{\partial \theta}  &= \frac{\partial }{\partial \theta}\left[ X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\bm{W}_i\right] \\
+    &= -X_i\frac{\partial }{\partial \theta}\left[\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\right]\bm{X}^T\bm{W}_i+  X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\frac{\partial }{\partial \theta}\left[\bm{X}^T\bm{W}_i\right]\\
+    &= -X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\frac{\partial }{\partial \theta}\left[\bm{X}^T\bm{W}_i\bm{X}\right]\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\bm{W}_i+  X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\frac{\partial }{\partial \theta}\left[\bm{X}^T\bm{W}_i\right]\\
+    &= -X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\frac{\partial \bm{W}_i}{\partial \theta}\bm{X}\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\bm{W}_i+  X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\frac{\partial\bm{W}_i }{\partial \theta}\\
+    &= X_i\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\left(\frac{\partial \bm{W}_i}{\partial \theta}- \frac{\partial \bm{W}_i}{\partial \theta}\bm{X}\left(\bm{X}^T\bm{W}_i\bm{X}\right)^{-1}\bm{X}^T\bm{W}_i\right)\\
+    &= X_i\pinv\left(\bm{W}_i\bm{X}\right)\left(\frac{\partial \bm{W}_i}{\partial \theta}- \frac{\partial \bm{W}_i}{\partial \theta}\bm{X}\pinv\left(\bm{W}_i\bm{X}\right)\bm{W}_i\right)
+\end{align}
+
+simply applying the rules of matrix calculus and introducing the Moore-Penrose inverse $\pinv(\bm{WX}) = \left(\bm{X}^T\bm{W}\bm{X}\right)^{-1}\bm{X}^T$.
+
+It may seem that calculating the derivative of $S$ is now trivial because 
+
+\begin{align}
+    \frac{\partial\hat{y}_i}{\partial \theta} = \frac{\partial}{\partial \theta}\left[h_i \bm{Y}\right] = \frac{\partial h_i}{\partial \theta}\bm{Y}
+\end{align}
+
+but this is not the case because the residuals are found using leave-one-out cross validation. This means we need to replace all instances of $
+\bm{X}$, $\bm{Y}$ and $\bm{W}$ with $\overset{L}{\bm{X}}_i$, $\overset{L}{\bm{Y}}_i$ and $\overset{L}{\bm{W}}$ as follows
+
+\begin{align}
+    \frac{\partial\hat{y}_i}{\partial \theta} &=\frac{\partial}{\partial \theta}
+    \left[X_i\left(\overset{L}{\bm{X}}_i^T\overset{L}{\bm{W}}_{i}\overset{L}{\bm{X}}_i\right)^{-1}\overset{L}{\bm{X}}^T\overset{L}{\bm{W}}_{i}\overset{L}{\bm{Y}}_i\right] \\
+    &= X_i\pinv\left(\overset{L}{\bm{W}}_{i}\overset{L}{\bm{X}}\right)\left(\frac{\partial \overset{L}{\bm{W}}_{i}}{\partial \theta}\overset{L}{\bm{Y}}_i- \frac{\partial \overset{L}{\bm{W}}_{i}}{\partial \theta}\overset{L}{\bm{X}}\pinv\left(\overset{L}{\bm{W}}_{i}\overset{L}{\bm{X}}\right)\overset{L}{\bm{W}}_{i}\overset{L}{\bm{Y}}_i\right). 
+\end{align}
+
+All that remains is to find the partial derivative of $W_i$ with respect to $\theta$ and $\delta$. Thankfully, this is the only point in the procedure where the computation of these derivatives diverges, so to get the expression with respect to $\delta$ you need only replace instances of $\frac{\partial \bm{W}_i}{\partial \theta}$ with $\frac{\partial \bm{W}_i}{\partial \delta}$. The derivative for $\overset{L}{\bm{W}}_i$ is exactly the same just with the obvious replacements of $\bm{X}$ with $\overset{L}{X}_i$. We have
+
+\begin{align}
+    \frac{\partial \bm{W}_i}{\partial \theta} = -\exp\left(-\theta\frac{||X_i-\bm{X}||}{d}-\delta(t_i-\bm{T})^2\right)\left(-\frac{||X_i-\bm{X}||}{d}\right).
+\end{align}
+
+\subsection{Derivation of Time Window Width}
+
+Here the formula for $w_s$ is derived, which again represents the width of time windows where the data are approximately stationary. NSMap  updates the weighting function of SMap by multiplying by a Gaussian kernel that is time dependent, so it makes sense intuitively to ask what the width of this kernel in terms of the real time elapsed during the time series. To find this width a weight value is needed, let this be $x\in[0,1]$. Any $x$ can be chosen, shortly a computationally convenient value will be chosen. Solving for $\Delta t$ yields
+
+\begin{align}
+    x &= \exp(-\delta_\text{agg}(\Delta t)^2) \\
+    \Delta t &= \sqrt{\frac{-\ln(x)}{\delta}}
+\end{align}
+
+where $\Delta t = \frac{t-t^*}{N}$ from \autoref{eq_NSMap_weighting} and is bounded between 0 and 1. $\Delta t$ represents the radius of the window so the width is $2\Delta t$. Choosing $x=e^{-1/4}\approx 0.78$ yields
+
+\[2\sqrt{\frac{-\ln(e^{-1/4})}{\delta_\text{agg}}} = \frac{1}{\sqrt{\delta_\text{agg}}} \]
+
+which represents the size of the stationary window as a dimensionless quantity where 1 is the length of the series. To get this in terms of real units we need only multiply by the length of the time series in whatever units are preferred, yielding
+
+\[w_s = \frac{l \text{ years}}{\sqrt{\delta_\text{agg}}}.\]
+
+If the kernel is thought of as a normal distribution the stationary window is the region one standard deviation around the mean. Thus points outside the window are still afforded moderately strong weight, but those inside are especially strong. 
+
+There is an alternative dimensional analysis derivation of this expression. First notice that $\Delta t$ must be in units of $(l \text{ years})$ because $\Delta t$ is bounded between 0 and 1 and represents fractions of the entire time series which runs over $l\text{ years}$. Since $\delta_\text{agg} \cdot\Delta t ^ 2$ must be dimensionless(since weights are dimensionless), $\delta_\text{agg}$ must have units $(l \text{ years})^{-2}$. To convert to the units of years you invert and take the square root to find again $(l \text{ years} )/ \sqrt{\delta_\text{agg}}$.
+
+\subsection{Limits on Limit Cycles}
+
+This method encounters issues when confronted with a stationary limit cycle from a continuous dynamical system without observation noise. This is expected as Taken's Theorem fails for pure limit cycle dynamics. In \autoref{figure_limit_cycle} is a Hastings Powell time series at parameter values that induce a periodic limit cycle. The sampling interval is slightly out of phase with the recurrence time of the limit cycle leading to a beat frequency. Thus each point on the attractor appears to be shifting slowly and continuously with time which makes a large $\delta$ improve forecast skill considerably, spuriously detecting nonstationarity.
+
+\begin{figure}\label{figure_limit_cycle}
+    \centering
+    a)\includegraphics[width=6cm]{figures/limit_cycle_time_series.png}
+    b)\includegraphics[width=6cm]{figures/limit_cycle_poincare_plot.png}
+    \caption{a) stationary time series which the method identifies as nonstationary. A quite strong $\delta_\text{agg}=4.79$ is found for $E_\text{max}=6$. b) This Poincare plot demonstrates why nonstationarity was mistakenly identified. Color represents time with purple meaning early in the series and yellow meaning later. Because the sampling frequency of the series and the integration stepsize are just slightly out of phase nearby points in state space appear to follow a long term linear trend. This creates illusory nonstationarity. }
+    \label{fig:my_label}
+\end{figure}
+
+It is unlikely that a case like this will be a problem in real ecological data. If the data are in a stationary limit cycle then (a) the presence of observation noise or (b) a sampling frequency that agrees with the intrinsic periodicity of the attractor will stop the misidentification of nonstationarity. In \autoref{fig_noisy_limit_cycle} the same time series with observation noise is included with $\alpha=0.1$. Here the procedure correctly identifies the series as stationary with $\delta_\text{agg}=0$. The lag plot shows that all the linear trends due to sampling frequency dissipate in the presence of noise. This is another case where adding observation noise appears to help identification of nonstationarity instead of hurt it. The linear trends in time which spuriously show nonstationarity all evaporate if the sampling frequency and period of oscillation are in agreement. This sounds at first like an edge case but is the norm in ecological series. Ecological dynamics are usually annually periodic and observations are recorded monthly so any limit cycles with annual period would not create these illusory trends in time. This edge case should not be an obstacle to real data analysis
+
+\begin{figure}\label{fig_noisy_limit_cycle}
+    \centering
+    a)\includegraphics[width=6cm]{figures/limit_cycle_time_series_with_noise.png}
+    b)\includegraphics[width=6cm]{figures/limit_cycle_poincare_plot_with_noise.png}
+    \caption{a) the same time series as before but with observation noise added per $\alpha=0.1$ which is conservative for ecological data. b) Poincare plot for the noisy time series. The noise has disrupted the linear trends sufficiently. On this time series the method correctly identifies the series as stationary.}
+    \label{fig:my_label}
+\end{figure}
+
+\subsection{Many Replicate Simulation Results}
+
+It is worthwhile investigating the limits of the method in this simple case. It is expected that the relationship between $\delta_\text{agg}$ and the nonstationarity rate should become sharper as time series length is increased and fuzzy as more observation noise is introduced. To test these 1000 logistic map time series will be generated in the aforementioned way except the length of the series will be varied to be in the $L=[64,128,256,512,1024]$ and plotted against the $r^2$ coefficient. We also note that the predictability of the time series follows a similar trend, which indicates that predictability is a strong measure of how successful the method is. If a time series is not accurately forecastable NSMap has little to say about it's nonstationarity. 
+
+
+In both systems a monotonic trend between the rate of nonstationarity and the inverse of the stationary window is observed. A linear relationship is evident for the logistic map and a nonlinear elbow joint relationship for the Hastings Powell system. This nonlinearity is due to the nonlinearity of the Hastings Powell model because a linear change in a hyperparameter doesn't necessarily lead to a linear change in dynamics. In the Hastings Powell graph several extreme outliers are cut off for $w_s$ with magnitude ranging from 48 years to 200 years. These outliers exist when the rate of nonstationarity is between 0 to 0.2. In this case, the system is very nearly stationary, so in practice, a $w_s$ value several times longer than the length of the time series means the system is likely stationary. Another way of controlling these outliers is to take the inverse of $w_s$, which is also plotted for both systems. 
+
+In the following example, each time series is 256 data points long with no observation noise, and it is assumed (arbitrarily) that each series runs over 16 years. Each datapoint represents a separate time series with a randomly generated initial condition and rate of nonstationarity, there are 1024 such replicates. Since $w_s$ is infinite in the stationary case, it is convenient to plot the inverse instead. The same experiment is run with continuous time Hastings Powell systems where the $b_1$ hyperparameter is defined as $b_1(t) = 3.5 + 5tb$. These parameterizations were chosen because they changed the behavior of the model system significantly while avoiding purely bifurcations to periodic or equilibrium dynamics. SMap does not work in the periodic case, but this case rarely emerges in practical time series.
+
+A more complete suite of tests with nonlinear parameter change, varying levels of observation noise and time series length are included in the supplement. In all cases, similar relationships between the rate of nonstationarity and $w_s$ are observed.
+
+\includegraphics[width=10cm]{figures/round1_of_simulations.png}
+
+\begin{figure}
+    \centering
+    a)
+    \includegraphics[width=7cm]{figures/rate_of_nonstationarity_vs_stationary_window_logistic_256_0-00.png}
+    b)
+    \includegraphics[width=7cm]{figures/rate_of_nonstationarity_vs_stationary_window_hastings_256_0-00.png}
+    c)
+    \includegraphics[width=7cm]{figures/rate_of_nonstationarity_vs_stationary_window_inv_logistic_256_0-00.png}
+    d)
+    \includegraphics[width=7cm]{figures/rate_of_nonstationarity_vs_stationary_window_inv_hasting_256_0-00.png}
+    \caption{a) The underlying rate of nonstationarity plotted against $w_s$ for 1024 replicates of a 256 datapoint long logistic map time series with random initial conditions and nonstationarity rates. b) The same but for the Hastings Powell system. The y-axis is artificially cut off at 48 because there are several large outliers in the nonstationarity rate between 0 and 0.2, showing that in continuous time systems very large finite stationary windows happen frequently. c) rescaling of the same data by inverting the stationary window. This yields a more clean linear relationship and sends extremely large stationary windows to 0. d) same for the Hastings Powell data.}
+    \label{fig:my_label}
+\end{figure}
+
+\end{document}
