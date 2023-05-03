@@ -1,0 +1,70 @@
+Round 1
+
+T = 200
+o_n = 0.1
+N_replicates = 100
+reduction = 2 ** 8
+
+Linear
+E_max = 2
+# to introduce a trend a linear increase with range 1 was introduced
+
+Logistic
+r_list = (lambda t: 3.75, lambda t: 3.75 - 0.75 * t / T)
+E_max = 3
+settlingTime = 200
+
+Food Chain
+end = T * 5
+E_max = 8
+settlingTime = 2 ** 9
+
+Round 2
+
+Logistic Time Series Length
+T_list = (50, 100, 200)
+r_list = (lambda t: 3.75, lambda t: 3.75 - 0.25 * t, lambda t: 3.75 - 0.75 * t)
+N_replicates = 100
+E_max = 3
+
+Logistic Observation Noise
+T = 200
+obs_list = (0.0,0.1,0.2,0.3)
+r_list = (lambda t: 3.75, lambda t: 3.75 - 0.25 * t, lambda t: 3.75 - 0.75 * t)
+# r_list = (lambda t: 4, lambda t: 4 - 0.25 * t / T, lambda t: 4 - t / T)
+N_replicates = 100
+E_max = 3
+
+Logistic Process Noise
+T = 200
+pro_list = (0.0, logistic_process_noise)
+r_list = (lambda t: 3.75, lambda t: 3.75 - 0.25 * t, lambda t: 3.75 - 0.75 * t)
+# r_list = (lambda t: 4, lambda t: 4 - 0.25 * t / T, lambda t: 4 - t / T)
+N_replicates = 100
+E_max = 3
+
+Food Chain Time Series Length
+T_list = (50, 100, 200)
+b1_list = (lambda t: 3, lambda t: 3 + 2 * t / end, lambda t: 3 + 4 * t / end)
+N_replicates = 1
+E_max = 4
+tau = 1
+settlingTime = 2 ** 9
+reduction = 2 ** 8
+
+Food Chain Observation Noise
+T = 200
+end = T
+obs_list = (0.0,0.1,0.2,0.3)
+b1_list = (lambda t: 3, lambda t: 3 + 2 * t / end, lambda t: 3 + 4 * t / end)
+N_replicates = 100
+# log_std is calculated as the standard deviation on a stationary hastings powell map series with T=200 and b1=3
+log_std = 0.20682984252169215
+
+Food Chain Process Noise
+T = 200
+end = T * 5
+pro_list = (0.0,0.017)
+b1_list = (lambda t: 3, lambda t: 3 + 2 * t / end, lambda t: 3 + 4 * t / end)
+# b1_list = (lambda t: 3, lambda t: 3 + 1 * t / end, lambda t: 3 + 3 * t / end)
+N_replicates = 100

@@ -58,13 +58,12 @@ def Tent(x, t, M):
     elif x > m:
         return (1-x) / (1-m)
 
-
 def Logistic(x, t):
     r = 4
     return r * x * (1-x)
 
-def LogisticP(x, t, r):
-    return r(t) * x * (1-x)
+def LogisticP(x, t, r, k = lambda t: 1):
+    return r(t) * x * (1-x/k(t))
 
 def LogisticIslandsP(x, t, r, m):
     I = x.shape[0]
@@ -83,6 +82,16 @@ def LogisticIslands(x, t):
     m = lambda t : 0.5
     
     return LogisticIslandsP(x, t, r, m)
+
+def Ricker(x, t):
+    r = 1
+    k = 1
+
+    return x * np.exp(r*(1-x/k))
+
+def RickerP(x, t, r, k):
+
+    return x * np.exp(r(t) * (1 - x / k(t)))
 
 def DensityDependentMaturation(x, t):
     s = 0.02 # 
@@ -276,6 +285,19 @@ def generateTimeSeriesContinuous(f, t0, tlen=256, end=32, reduction=1, settlingT
 
     return ts
 
+def generateLogisticMapProcessNoise(x0 = np.pi / 4, tlen = 200, r = lambda t: 4, process_noise = 0.0):
+    ts = np.zeros(tlen)
+    ts[0] = x0
+
+    for i in range(tlen-1):
+        t = i / (tlen - 1)
+        x = r(t) * ts[i] * (1 - ts[i])
+        u = np.log(x / (1 - x))
+        z = rand.normal(0, process_noise)
+        ts[i+1] = 1 / (1 + np.exp(z - u))
+
+    return ts[:,None]
+
 def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None, process_noise=0):
     F = globals()[f]
     
@@ -296,10 +318,30 @@ def generateTimeSeriesDiscrete(f, t0, tlen=256, settlingTime=0, nsargs=None, pro
     # now evaluate
     if nsargs==None:
         for i in range(1,tlen):
-            ts[i] = F(ts[i-1], i) + process_noise*rand.normal(0,1)
+            ts[i] = F(ts[i-1], i) * np.exp(process_noise*rand.normal(0,1))
     else:
         for i in range(1,tlen):
-            ts[i] = F(ts[i-1], i, *nsargs) + process_noise*rand.normal(0,1)
+            ts[i] = F(ts[i-1], i, *nsargs) * np.exp(process_noise*rand.normal(0,1))
 
     return ts
 
+def generateLinearSeries(length=200,pro_noise=0.0, obs_noise=0.1, ns=False):
+    
+    if ns:
+        theta = lambda t: (0.5+t)*np.pi/6
+    else:
+        theta = lambda t: np.pi/6
+    A = lambda theta: np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+    
+    X = np.zeros((length,2))
+    init = np.exp(2*np.pi*rand.uniform(0,1)*1j)
+    X[0] = (2 ** 0.5) * np.array([init.real, init.imag]) # rand.normal(2)
+
+    for i in range(length-1):
+        t = i / (length-1) if ns else 0
+        X[i+1] = (A(theta(t)) @ X[i]) + rand.normal(0,pro_noise,2)
+    
+    ts = X[:,0] + (rand.normal(0,1,length) * obs_noise)
+    
+    # return standardize(ts) if ns else standardize(ts)
+    return ts + np.linspace(0,1,num=length) if ns else ts

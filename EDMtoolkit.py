@@ -732,22 +732,30 @@ def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, retu
 
         table[l] = np.array([deltaNS, lnLNS, lnLS, thetaNS, thetaS])
 
+    fsize = 30
+    
     """
-    fig, ax = plt.subplots(1,2,figsize=(10,4))
-    E_range = range(2,maxLags+3)
-    ax[0].plot(E_range, table[:,1], "g--", label="NSMap")
-    ax[0].plot(E_range, table[:,2], "b--", label="SMap")
-    ax[0].set_xlabel("E")
-    ax[0].set_ylabel("log Likelihood")
-    ax[0].set_xticks(E_range)
-    ax[0].legend()
-    ax[1].plot(E_range, table[:,0],label="delta")
-    ax[1].plot(E_range, table[:,3],label="theta")
-    ax[1].set_xlabel("E")
-    ax[1].set_ylabel("delta")
+    fig, ax = plt.subplots(1,3,figsize=(18,6))
+    E_range = range(1,maxLags+2)
+    ax[0].plot(t,Xr)
+    ax[0].set_ylabel("Abundance", size = fsize)
+    ax[0].set_xlabel("Time", size = fsize)
+    # ax[0].set_tick_params(labelsize = fsize)
+    ax[1].plot(E_range, table[:,0],label=r"$\delta$")
+    # ax[1].plot(E_range, table[:,3],label="theta")
+    ax[1].set_xlabel("E", size = fsize)
+    ax[1].set_ylabel(r"$\delta$", rotation=90, size = fsize)
     ax[1].set_xticks(E_range)
-    ax[1].legend()
-
+    # ax[1].set_tick_params(labelsize = fsize)
+    ax[1].legend(fontsize = fsize)
+    ax[2].plot(E_range, table[:,1], "g--", label="NSMap")
+    ax[2].plot(E_range, table[:,2], "b--", label="SMap")
+    ax[2].set_xlabel("E", size = fsize)
+    ax[2].set_ylabel("log Likelihood", size = fsize)
+    ax[2].set_xticks(E_range)
+    ax[2].legend(fontsize = fsize)
+    # ax[2].set_tick_params(labelsize = fsize)
+    
     plt.tight_layout()
     plt.show()
     """
