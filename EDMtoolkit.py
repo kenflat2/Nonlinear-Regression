@@ -5,6 +5,7 @@ import numpy.random as rand
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from modelSystems import *
 from scipy import stats
 from multiprocessing import Process
@@ -707,7 +708,7 @@ def optimizationSuite(Xr, t, horizon, maxLags, errFunc=logUnLikelihood, training
     # (thetaNS, deltaNS, errNS, lagsNS, tauNS, thetaS, errS, lagsS, tauS)
     return (tableNS[iNS][1], tableNS[iNS][2], tableNS[iNS][0], int(tableNS[iNS][3]), int(tableNS[iNS][4]), tableS[iS][1], tableS[iS][0], int(tableS[iS][2]), int(tableS[iS][3]))
 
-def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, return_forecast_skill=False, theta_fixed=False):
+def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, return_forecast_skill=False, theta_fixed=False, make_plots=False):
     
     if t is None:
         t = np.linspace(0,1, num=len(Xr))
@@ -732,19 +733,67 @@ def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, retu
 
         table[l] = np.array([deltaNS, lnLNS, lnLS, thetaNS, thetaS])
 
-    fsize = 30
-    
-    """
+    if make_plots:
+        make_delta_plots(Xr, t, maxLags, table)
+
+    lnLdifference = table[:,1] - table[:,2]
+    # ns_area =  np.sum(np.maximum(lnLdifference, np.zeros(maxLags+1)))
+    delta_agg_weights = np.exp(lnLdifference - np.max(lnLdifference))
+    delta_agg = np.average(table[:,0], weights=delta_agg_weights)
+    theta = table[np.argsort(table[:,1])[-1],3]
+
+    if return_forecast_skill:
+        return (delta_agg, theta, get_r_sqrd(table, Xemb, Y, tau, tx))
+    else: 
+        return delta_agg
+
+def make_delta_plots(Xr, t, maxLags, table):
+    fig, ax = plt.subplots(1)
+
+    fsize = 25
+    E_range = range(1,maxLags+2)
+
+    ax.plot(E_range, table[:,0],label=r"$\hat{\delta}$")
+    ax.set_xlabel("E", size = fsize)
+    ax.set_ylabel(r"$\hat{\delta}$", size = fsize, rotation=0)
+    ax.set_xticks(E_range)
+    ax.tick_params(axis='both', which='major', labelsize=fsize * 3 / 4)
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('bottom', size='100%',pad=0.1)
+
+    minLine = (table[:,2] * 0)+min(min(table[:,2]),min(table[:,1])) 
+
+    cax.plot(E_range, table[:,2], "r--", label="SMap")
+    cax.plot(E_range, table[:,1], "y--", label="NSMap")
+    cax.fill_between(E_range, table[:,2], minLine, alpha=0.5, color="red")
+    cax.fill_between(E_range, table[:,1], minLine, alpha=0.5, color = "yellow")
+    cax.set_xlabel("E", size = fsize)
+    cax.set_ylabel(r"$\ln\mathcal{L}$", size = fsize, rotation=0)
+    cax.set_xticks(E_range)
+    cax.legend(fontsize = fsize)
+    cax.legend(fontsize = fsize)
+    cax.tick_params(axis='both', which='major', labelsize=fsize * 3 / 4)
+    cax.tick_params(axis='both', which='major', labelsize=fsize * 3 / 4)
+
+    plt.tight_layout()
+    plt.show()
+
+"""
+def make_delta_plots(Xr, t, maxLags, table):
+    fsize = 25
     fig, ax = plt.subplots(1,3,figsize=(18,6))
     E_range = range(1,maxLags+2)
     ax[0].plot(t,Xr)
     ax[0].set_ylabel("Abundance", size = fsize)
     ax[0].set_xlabel("Time", size = fsize)
+    ax[0].set_xticks([])
+    ax[0].set_yticks([])
     # ax[0].set_tick_params(labelsize = fsize)
-    ax[1].plot(E_range, table[:,0],label=r"$\delta$")
-    # ax[1].plot(E_range, table[:,3],label="theta")
+    ax[1].plot(E_range, table[:,0],label=r"$\hat{\delta}$")
+    # ax[1].plot(E_range, table[:,3],label=r"$\hat{\theta}$")
     ax[1].set_xlabel("E", size = fsize)
-    ax[1].set_ylabel(r"$\delta$", rotation=90, size = fsize)
+    # ax[1].set_ylabel(r"$\delta$", size = fsize)
     ax[1].set_xticks(E_range)
     # ax[1].set_tick_params(labelsize = fsize)
     ax[1].legend(fontsize = fsize)
@@ -754,22 +803,13 @@ def get_delta_agg(Xr, maxLags, t=None, horizon=1, tau=1, trainingSteps=100, retu
     ax[2].set_ylabel("log Likelihood", size = fsize)
     ax[2].set_xticks(E_range)
     ax[2].legend(fontsize = fsize)
+    ax[0].tick_params(axis='both', which='major', labelsize=fsize * 3 / 4)
+    ax[1].tick_params(axis='both', which='major', labelsize=fsize * 3 / 4)
+    ax[2].tick_params(axis='both', which='major', labelsize=fsize * 3 / 4)
     # ax[2].set_tick_params(labelsize = fsize)
-    
     plt.tight_layout()
     plt.show()
-    """
-
-    lnLdifference = table[:,1] - table[:,2]
-    # ns_area =  np.sum(np.maximum(lnLdifference, np.zeros(maxLags+1)))
-    delta_agg_weights = np.exp(lnLdifference - np.max(lnLdifference))
-    delta_agg = np.average(table[:,0], weights=delta_agg_weights)
-    theta_agg = np.average(table[:,3], weights=delta_agg_weights)
-
-    if return_forecast_skill:
-        return (delta_agg, theta_agg, get_r_sqrd(table, Xemb, Y, tau, tx))
-    else: 
-        return delta_agg
+"""
 
 # ugly but necessary function, finds the r squared coefficient based on the other data from get_delta_agg
 def get_r_sqrd(table, Xemb, Y, tau, tx):
@@ -1259,7 +1299,7 @@ def find_tau_autocorr(X):
     while True:
         A,B = delayEmbed(Xstd,tau,0,0)
         c = np.corrcoef(A.flatten(),B.flatten())[0,1]
-        # print(c)
+        print(c)
         if c < 0 or tau >= len(Xstd):
             break
         tau += 1
